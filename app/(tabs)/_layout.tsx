@@ -92,8 +92,29 @@ export default function TabLayout() {
     return (
       <Tabs
         screenOptions={{
-          tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
+          tabBarActiveTintColor: '#1F2937', // Dark gray for active tabs
+          tabBarInactiveTintColor: '#D1D5DB', // Light gray for inactive tabs
           headerShown: false,
+          tabBarStyle: {
+            backgroundColor: '#FFFFFF',
+            borderTopWidth: 1,
+            borderTopColor: '#E5E7EB',
+            paddingBottom: 25, // Extra padding for iPhone home indicator
+            paddingTop: 8,
+            height: 85, // Increased height to accommodate padding
+            paddingHorizontal: 10, // Better spacing for icons
+            elevation: 0, // Remove shadow on Android
+            shadowOpacity: 0, // Remove shadow on iOS
+          },
+          tabBarLabelStyle: {
+            fontSize: 12,
+            fontWeight: '600',
+            marginTop: 4,
+            textAlign: 'center',
+          },
+          tabBarIconStyle: {
+            marginBottom: 2,
+          },
         }}>
         <Tabs.Screen
           name="index"
@@ -145,16 +166,16 @@ export default function TabLayout() {
   }
 
   // Driver and Admin users don't use tabs - redirect them
-  // TODO: Implement driver and admin routes
-  // if (user.role === 'driver') {
-  //   router.replace('/driver');
-  //   return null;
-  // }
+  if (user.role === 'driver') {
+    router.replace('/driver/(tabs)');
+    return null;
+  }
 
-  // if (user.role === 'admin') {
-  //   router.replace('/admin');
-  //   return null;
-  // }
+  if (user.role === 'admin') {
+    // TODO: Implement admin routes - for now redirect to customer
+    router.replace('/(tabs)');
+    return null;
+  }
 
   return null;
 }
