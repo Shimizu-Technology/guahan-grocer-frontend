@@ -1,59 +1,160 @@
-import React from 'react';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { Link, Tabs } from 'expo-router';
-import { Pressable } from 'react-native';
+import { Tabs, router } from 'expo-router';
+import React, { useEffect, useRef } from 'react';
+import { View, ActivityIndicator, Text, Animated } from 'react-native';
 
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
-import { useClientOnlyValue } from '@/components/useClientOnlyValue';
+import { TabBarIcon } from '../../components/navigation/TabBarIcon';
+import Colors from '../../constants/Colors';
+import { useColorScheme } from '../../components/useColorScheme';
+import { useAuth } from '../../context/AuthContext';
+import { useCart } from '../../context/CartContext';
 
-// You can explore the built-in icon families and icons on the web at https://icons.expo.fyi/
-function TabBarIcon(props: {
-  name: React.ComponentProps<typeof FontAwesome>['name'];
-  color: string;
-}) {
-  return <FontAwesome size={28} style={{ marginBottom: -3 }} {...props} />;
-}
+// Cart Icon with Badge Component
+const CartIconWithBadge = ({ color, focused }: { color: string; focused: boolean }) => {
+  const { itemCount } = useCart();
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const prevItemCount = useRef(itemCount);
+
+  useEffect(() => {
+    if (itemCount > prevItemCount.current) {
+      // Bounce animation when items are added
+      Animated.sequence([
+        Animated.timing(scaleAnim, {
+          toValue: 1.3,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+    prevItemCount.current = itemCount;
+  }, [itemCount, scaleAnim]);
+  
+  return (
+    <View style={{ position: 'relative' }}>
+      <TabBarIcon name={focused ? 'bag' : 'bag-outline'} color={color} />
+      {itemCount > 0 && (
+        <Animated.View style={{
+          position: 'absolute',
+          top: -6,
+          right: -6,
+          backgroundColor: '#E67E52',
+          borderRadius: 10,
+          minWidth: 20,
+          height: 20,
+          justifyContent: 'center',
+          alignItems: 'center',
+          borderWidth: 2,
+          borderColor: 'white',
+          transform: [{ scale: scaleAnim }],
+        }}>
+          <Text style={{
+            color: 'white',
+            fontSize: 12,
+            fontWeight: 'bold',
+            textAlign: 'center',
+          }}>
+            {itemCount > 99 ? '99+' : itemCount}
+          </Text>
+        </Animated.View>
+      )}
+    </View>
+  );
+};
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+  const { user, isLoading } = useAuth();
 
-  return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        // Disable the static render of the header on web
-        // to prevent a hydration error in React Navigation v6.
-        headerShown: useClientOnlyValue(false, true),
-      }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Tab One',
-          tabBarIcon: ({ color }) => <TabBarIcon name="code" color={color} />,
-          headerRight: () => (
-            <Link href="/modal" asChild>
-              <Pressable>
-                {({ pressed }) => (
-                  <FontAwesome
-                    name="info-circle"
-                    size={25}
-                    color={Colors[colorScheme ?? 'light'].text}
-                    style={{ marginRight: 15, opacity: pressed ? 0.5 : 1 }}
-                  />
-                )}
-              </Pressable>
-            </Link>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="two"
-        options={{
-          title: 'Tab Two',
-          tabBarIcon: ({ color }) => <TabBarIcon name="code" color={color} />,
-        }}
-      />
-    </Tabs>
-  );
+  useEffect(() => {
+    if (!isLoading && !user) {
+      router.replace('/login');
+    }
+  }, [user, isLoading]);
+
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#0F766E" />
+      </View>
+    );
+  }
+
+  if (!user) {
+    return null; // Will redirect to login
+  }
+
+  // Customer tabs
+  if (user.role === 'customer') {
+    return (
+      <Tabs
+        screenOptions={{
+          tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
+          headerShown: false,
+        }}>
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: 'Home',
+            tabBarIcon: ({ color, focused }) => (
+              <TabBarIcon name={focused ? 'home' : 'home-outline'} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="catalog"
+          options={{
+            title: 'Catalog',
+            tabBarIcon: ({ color, focused }) => (
+              <TabBarIcon name={focused ? 'grid' : 'grid-outline'} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="favorites"
+          options={{
+            title: 'Favorites',
+            tabBarIcon: ({ color, focused }) => (
+              <TabBarIcon name={focused ? 'heart' : 'heart-outline'} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="cart"
+          options={{
+            title: 'Cart',
+            tabBarIcon: ({ color, focused }) => (
+              <CartIconWithBadge color={color} focused={focused} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="profile"
+          options={{
+            title: 'Profile',
+            tabBarIcon: ({ color, focused }) => (
+              <TabBarIcon name={focused ? 'person' : 'person-outline'} color={color} />
+            ),
+          }}
+        />
+      </Tabs>
+    );
+  }
+
+  // Driver and Admin users don't use tabs - redirect them
+  // TODO: Implement driver and admin routes
+  // if (user.role === 'driver') {
+  //   router.replace('/driver');
+  //   return null;
+  // }
+
+  // if (user.role === 'admin') {
+  //   router.replace('/admin');
+  //   return null;
+  // }
+
+  return null;
 }
