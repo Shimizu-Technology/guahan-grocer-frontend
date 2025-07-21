@@ -1,24 +1,24 @@
 import { User, Item, Order } from '../types';
 
-export const mockUsers: User[] = [
+export const mockUsers = [
   {
-    id: '1',
+    id: 1,
+    name: 'John Customer',
     email: 'customer@example.com',
-    role: 'customer',
-    name: 'John Customer'
+    role: 'customer' as const,
   },
   {
-    id: '2',
+    id: 2,
+    name: 'Jane Driver',
     email: 'driver@example.com',
-    role: 'driver',
-    name: 'Jane Driver'
+    role: 'driver' as const,
   },
   {
-    id: '3',
+    id: 3,
+    name: 'Admin User',
     email: 'admin@example.com',
-    role: 'admin',
-    name: 'Admin User'
-  }
+    role: 'admin' as const,
+  },
 ];
 
 export const mockItems: Item[] = [

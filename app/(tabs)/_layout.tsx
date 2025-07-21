@@ -172,8 +172,7 @@ export default function TabLayout() {
   }
 
   if (user.role === 'admin') {
-    // TODO: Implement admin routes - for now redirect to customer
-    router.replace('/(tabs)');
+    router.replace('/admin/(tabs)');
     return null;
   }
 
