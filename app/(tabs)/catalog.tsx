@@ -22,7 +22,7 @@ import { productsAPI } from '../../services/api';
 import { Item } from '../../types';
 
 export default function CatalogScreen() {
-  const { category } = useLocalSearchParams();
+  const { category, productId } = useLocalSearchParams();
   const { addItem } = useCart();
   const { addToFavorites, removeFromFavorites, isFavorite } = useFavorites();
   
@@ -100,6 +100,18 @@ export default function CatalogScreen() {
       previousCategoryParam.current = currentCategoryParam;
     }
   }, [category, categories]);
+
+  // Handle productId parameter to open specific product modal
+  useEffect(() => {
+    if (productId && products.length > 0) {
+      const productIdString = Array.isArray(productId) ? productId[0] : productId;
+      const product = products.find(item => item.id === productIdString);
+      
+      if (product) {
+        openModal(product);
+      }
+    }
+  }, [productId, products]);
 
   const filteredItems = products.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());

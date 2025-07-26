@@ -130,6 +130,13 @@ export default function HomeScreen() {
     router.push('/catalog');
   };
 
+  const navigateToProduct = (productId: string) => {
+    router.push({
+      pathname: '/catalog',
+      params: { productId }
+    });
+  };
+
   const renderCategory = ({ item }: { item: Category }) => (
     <TouchableOpacity
       style={[styles.categoryCard, { borderColor: item.color }]}
@@ -144,7 +151,7 @@ export default function HomeScreen() {
   const renderFeaturedProduct = ({ item }: { item: Item }) => (
     <TouchableOpacity
       style={styles.productCard}
-      onPress={() => navigateToCatalog()}
+      onPress={() => navigateToProduct(item.id)}
     >
       <Image source={{ uri: item.imageUrl }} style={styles.productImage} />
       <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
