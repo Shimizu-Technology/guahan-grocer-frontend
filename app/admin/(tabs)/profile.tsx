@@ -5,6 +5,7 @@ import {
   StyleSheet,
   SafeAreaView,
   StatusBar,
+  ScrollView,
   TouchableOpacity,
   Alert,
 } from 'react-native';
@@ -46,7 +47,11 @@ export default function AdminProfile() {
           <Text style={styles.headerTitle}>Admin Profile</Text>
         </View>
         
-        <View style={styles.content}>
+        <ScrollView 
+          style={styles.content}
+          contentContainerStyle={styles.contentContainer}
+          showsVerticalScrollIndicator={false}
+        >
           {/* Admin Info Card */}
           <View style={styles.profileCard}>
             <View style={styles.profileInfo}>
@@ -119,7 +124,7 @@ export default function AdminProfile() {
               <Text style={styles.logoutText}>Sign Out</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </ScrollView>
       </SafeAreaView>
     </>
   );
@@ -144,7 +149,10 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  contentContainer: {
     paddingTop: 20,
+    paddingBottom: 100, // Extra padding for tab bar
   },
   profileCard: {
     backgroundColor: 'white',

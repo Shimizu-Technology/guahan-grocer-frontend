@@ -6,101 +6,192 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
-  StatusBar,
   Alert,
+  TextInput,
+  Modal,
+  ActivityIndicator,
   Image,
+  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, router, Stack } from 'expo-router';
 
 import { useAuth } from '../../../context/AuthContext';
-import { mockItems } from '../../../data/mockData';
-import { Item } from '../../../types';
+import { ordersAPI } from '../../../services/api';
 
-// Extended item type for shopping
-interface OrderItem extends Item {
+interface OrderItem {
+  id: string;
+  name: string;
+  category: string;
+  price: number;
+  unit: string;
   quantity: number;
-  foundQuantity: number | null; // null = not checked yet, 0 = none found, 1+ = partial/full found
+  foundQuantity: number | null;
   notes: string;
+  status?: string;
+  imageUrl?: string;
 }
 
-// Order type
 interface OrderData {
   id: string;
   customerName: string;
-  customerPhone: string;
+  customerPhone?: string;
   customerAddress: string;
-  deliveryInstructions: string;
+  deliveryInstructions?: string;
   storeName: string;
-  storeAddress: string;
+  storeAddress?: string;
   estimatedPayout: number;
-  deliveryFee: number;
+  deliveryFee?: number;
   urgency: string;
   status: string;
-  acceptedAt: string;
+  acceptedAt?: string;
   items: OrderItem[];
 }
-
-// Mock order data based on ID
-const getOrderById = (id: string): OrderData => {
-  const baseOrder = {
-    id,
-    customerName: 'Maria Santos',
-    customerPhone: '(671) 555-0123',
-    customerAddress: '123 Chalan San Antonio, Tamuning, GU 96913',
-    deliveryInstructions: 'Leave at front door, ring doorbell',
-    storeName: 'PayLess Supermarket',
-    storeAddress: '1210 Pale San Vitores Rd, Tumon, GU 96913',
-    estimatedPayout: 25.50,
-    deliveryFee: 2.99,
-    urgency: 'ASAP',
-    status: 'accepted',
-    acceptedAt: new Date().toISOString(),
-  };
-
-  // Mock items for this order
-  const orderItems: OrderItem[] = mockItems.slice(0, 5).map((item, index) => ({
-    ...item,
-    quantity: [2, 1, 3, 1, 2][index] || 1,
-    foundQuantity: null,
-    notes: ''
-  }));
-
-  return { ...baseOrder, items: orderItems };
-};
 
 export default function DriverOrderDetails() {
   const { user } = useAuth();
   const { id } = useLocalSearchParams();
-  const [order, setOrder] = useState<OrderData>(getOrderById(id as string));
+  const [order, setOrder] = useState<OrderData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState<'details' | 'shopping' | 'checkout' | 'delivering'>('details');
 
-  const handleStartShopping = () => {
-    Alert.alert(
-      'Start Shopping',
-      'Ready to head to the store and start shopping?',
-      [
-        { text: 'Not Yet', style: 'cancel' },
-        {
-          text: 'Start Shopping',
-          onPress: () => {
-            setCurrentStep('shopping');
-            setOrder(prev => ({ ...prev, status: 'shopping' }));
-          }
+  // Fetch order data from API
+  useEffect(() => {
+    fetchOrderData();
+  }, [id]);
+
+  const fetchOrderData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await ordersAPI.getById(id as string);
+      if (response.data) {
+        const orderData = response.data as any;
+        
+        // Format order data for the component
+        const formattedOrder: OrderData = {
+          id: orderData.id,
+          customerName: 'Customer', // Backend doesn't expose customer details for privacy
+          customerAddress: formatAddress(orderData.deliveryAddress),
+          deliveryInstructions: orderData.deliveryInstructions || 'No special instructions',
+          storeName: orderData.storeName || 'Store', // Use store name from backend or fallback
+          storeAddress: orderData.storeAddress || 'Store address not available',
+          estimatedPayout: orderData.estimatedPayout || 0,
+          deliveryFee: orderData.deliveryFee || 2.99, // Use backend delivery fee or default
+          urgency: getUrgencyFromDate(orderData.createdAt),
+          status: orderData.status,
+          acceptedAt: orderData.createdAt,
+          items: (orderData.items || []).map((item: any) => ({
+            id: item.id,
+            name: item.product?.name || 'Product',
+            category: item.product?.category || 'General',
+            price: parseFloat(item.price || item.product?.price || 0),
+            unit: item.product?.unit || 'unit',
+            quantity: item.quantity,
+            foundQuantity: item.foundQuantity || null,
+            notes: item.notes || '',
+            status: item.status || 'pending',
+            imageUrl: item.product?.image_url || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300',
+          }))
+        };
+
+        setOrder(formattedOrder);
+        
+        // Set initial step based on order status
+        if (orderData.status === 'shopping') {
+          setCurrentStep('shopping');
+        } else if (orderData.status === 'delivering') {
+          setCurrentStep('delivering');
+        } else {
+          setCurrentStep('details');
         }
-      ]
+      } else {
+        setError(response.error || 'Failed to load order details');
+      }
+    } catch (err) {
+      console.error('Failed to fetch order:', err);
+      setError('Failed to load order details. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Helper functions
+  const formatAddress = (address: any): string => {
+    if (!address) return 'Delivery Address';
+    
+    const parts = [
+      address.streetAddress,
+      address.city,
+      address.state,
+      address.zipCode
+    ].filter(Boolean);
+    
+    return parts.join(', ');
+  };
+
+  const getUrgencyFromDate = (createdAt: string): string => {
+    const created = new Date(createdAt);
+    const now = new Date();
+    const hoursSinceCreated = (now.getTime() - created.getTime()) / (1000 * 60 * 60);
+    
+    if (hoursSinceCreated < 1) return 'ASAP';
+    if (hoursSinceCreated < 4) return 'Today';
+    return 'Today Evening';
+  };
+
+  // Loading state
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#0F766E" />
+          <Text style={styles.loadingText}>Loading order details...</Text>
+        </View>
+      </SafeAreaView>
     );
+  }
+
+  // Error state
+  if (error || !order) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
+          <Text style={styles.errorText}>{error || 'Order not found'}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={fetchOrderData}>
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const handleStartShopping = async () => {
+    try {
+      await ordersAPI.updateStatus(order.id, 'shopping');
+      setCurrentStep('shopping');
+      if (order) {
+        setOrder({ ...order, status: 'shopping' });
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to start shopping. Please try again.');
+    }
   };
 
   const handleItemStatus = (itemId: string, foundQuantity: number, notes?: string) => {
-    setOrder(prev => ({
-      ...prev,
-      items: prev.items.map(item =>
+    if (!order) return;
+    
+    setOrder({
+      ...order,
+      items: order.items.map(item =>
         item.id === itemId
           ? { ...item, foundQuantity, notes: notes || '' }
           : item
       )
-    }));
+    });
   };
 
   const handleCompleteItem = (itemId: string) => {
@@ -328,7 +419,7 @@ export default function DriverOrderDetails() {
                   styles.itemCard,
                   !isShoppingStarted && styles.itemCardDisabled
                 ]}>
-                  <Image source={{ uri: item.imageUrl }} style={[
+                  <Image source={{ uri: item.imageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300' }} style={[
                     styles.itemImage,
                     !isShoppingStarted && styles.itemImageDisabled
                   ]} />
@@ -393,11 +484,11 @@ export default function DriverOrderDetails() {
             <View style={styles.earningsCard}>
               <View style={styles.earningsRow}>
                 <Text style={styles.earningsLabel}>Base Pay</Text>
-                <Text style={styles.earningsAmount}>${(order.estimatedPayout - order.deliveryFee).toFixed(2)}</Text>
+                <Text style={styles.earningsAmount}>${(order.estimatedPayout - (order.deliveryFee || 0)).toFixed(2)}</Text>
               </View>
               <View style={styles.earningsRow}>
                 <Text style={styles.earningsLabel}>Delivery Fee</Text>
-                <Text style={styles.earningsAmount}>${order.deliveryFee.toFixed(2)}</Text>
+                <Text style={styles.earningsAmount}>${(order.deliveryFee || 0).toFixed(2)}</Text>
               </View>
               <View style={styles.earningsDivider} />
               <View style={styles.earningsRow}>
@@ -466,10 +557,10 @@ export default function DriverOrderDetails() {
                   }
                 }}
                 disabled={completedItems < totalItems}
-                              >
-                  <Ionicons name="card" size={20} color="white" style={styles.buttonIcon} />
-                  <Text style={styles.actionButtonText}>Proceed to Checkout</Text>
-                </TouchableOpacity>
+              >
+                <Ionicons name="card" size={20} color="white" style={styles.buttonIcon} />
+                <Text style={styles.actionButtonText}>Proceed to Checkout</Text>
+              </TouchableOpacity>
             </View>
           )}
         </View>
@@ -482,6 +573,39 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#6B7280',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#EF4444',
+    textAlign: 'center',
+    marginVertical: 16,
+  },
+  retryButton: {
+    backgroundColor: '#0F766E',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
   header: {
     flexDirection: 'row',

@@ -4,7 +4,6 @@ import { View, ActivityIndicator, Text, Animated } from 'react-native';
 
 import { TabBarIcon } from '../../components/navigation/TabBarIcon';
 import Colors from '../../constants/Colors';
-import { useColorScheme } from '../../components/useColorScheme';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 
@@ -66,12 +65,18 @@ const CartIconWithBadge = ({ color, focused }: { color: string; focused: boolean
 };
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
   const { user, isLoading } = useAuth();
 
   useEffect(() => {
     if (!isLoading && !user) {
       router.replace('/login');
+    } else if (!isLoading && user) {
+      // Redirect non-customer users immediately
+      if (user.role === 'driver') {
+        router.replace('/driver/(tabs)');
+      } else if (user.role === 'admin') {
+        router.replace('/admin/(tabs)');
+      }
     }
   }, [user, isLoading]);
 
@@ -85,6 +90,11 @@ export default function TabLayout() {
 
   if (!user) {
     return null; // Will redirect to login
+  }
+
+  // Only render customer tabs for customer users
+  if (user.role !== 'customer') {
+    return null; // Will redirect to appropriate layout
   }
 
   // Customer tabs
@@ -163,17 +173,6 @@ export default function TabLayout() {
         />
       </Tabs>
     );
-  }
-
-  // Driver and Admin users don't use tabs - redirect them
-  if (user.role === 'driver') {
-    router.replace('/driver/(tabs)');
-    return null;
-  }
-
-  if (user.role === 'admin') {
-    router.replace('/admin/(tabs)');
-    return null;
   }
 
   return null;

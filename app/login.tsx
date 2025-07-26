@@ -23,12 +23,13 @@ export default function LoginScreen() {
   // Redirect if already authenticated
   React.useEffect(() => {
     if (user) {
-      const dashboardRoutes = {
+      const dashboardRoutes: Record<string, string> = {
         customer: '/(tabs)',
         driver: '/driver',
         admin: '/admin'
       };
-      router.replace(dashboardRoutes[user.role]);
+      const route = dashboardRoutes[user.role] || '/(tabs)';
+      router.replace(route as any);
     }
   }, [user]);
 
@@ -104,6 +105,14 @@ export default function LoginScreen() {
                 {isLoading ? 'Signing In...' : 'Sign In'}
               </Text>
             </TouchableOpacity>
+
+            {/* Signup Link */}
+            <View style={styles.signupLinkContainer}>
+              <Text style={styles.signupLinkText}>Don't have an account? </Text>
+              <TouchableOpacity onPress={() => router.push('/signup' as any)}>
+                <Text style={styles.signupLink}>Sign Up</Text>
+              </TouchableOpacity>
+            </View>
 
             {/* Demo Credentials */}
             <View style={styles.demoContainer}>
@@ -217,5 +226,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
     marginBottom: 4,
+  },
+  signupLinkContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  signupLinkText: {
+    fontSize: 16,
+    color: '#6B7280',
+  },
+  signupLink: {
+    fontSize: 16,
+    color: '#0F766E',
+    fontWeight: '600',
   },
 }); 

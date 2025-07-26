@@ -9,13 +9,16 @@ import {
   TextInput,
   Image,
   Modal,
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
 
 import { useCart } from '../../context/CartContext';
 import { useFavorites } from '../../context/FavoritesContext';
-import { mockItems } from '../../data/mockData';
+import { productsAPI } from '../../services/api';
 import { Item } from '../../types';
 
 export default function CatalogScreen() {
@@ -27,9 +30,61 @@ export default function CatalogScreen() {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [products, setProducts] = useState<Item[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const previousCategoryParam = useRef<string | null>(null);
 
-  const categories = ['All', ...new Set(mockItems.map(item => item.category))];
+  // Fetch products from API
+  const fetchProducts = async (showLoading = true) => {
+    try {
+      if (showLoading) setLoading(true);
+      setError(null);
+      
+      const response = await productsAPI.getAll();
+      if (response.data) {
+        // Convert backend format to frontend format
+        const formattedProducts = (response.data as any[]).map((product: any) => ({
+          id: product.id.toString(),
+          name: product.name,
+          category: product.category,
+          price: parseFloat(product.price),
+          unit: product.unit,
+          description: product.description,
+          inStock: product.inStock,
+          imageUrl: product.imageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300', // Fallback image
+        }));
+        setProducts(formattedProducts);
+      } else {
+        setError(response.error || 'Failed to load products');
+      }
+    } catch (err) {
+      console.error('Failed to fetch products:', err);
+      setError('Failed to load products. Please try again.');
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  };
+
+  // Initial load
+  useEffect(() => {
+    fetchProducts();
+  }, []);
+
+  // Refresh handler
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchProducts(false);
+    setRefreshing(false);
+  };
+
+  // Retry handler
+  const handleRetry = () => {
+    fetchProducts();
+  };
+
+  const categories = ['All', ...new Set(products.map(item => item.category))];
 
   // Handle category parameter from navigation - only when parameter actually changes
   useEffect(() => {
@@ -46,21 +101,26 @@ export default function CatalogScreen() {
     }
   }, [category, categories]);
 
-  const filteredItems = mockItems.filter(item => {
+  const filteredItems = products.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
-    return matchesSearch && matchesCategory;
+    const matchesStock = item.inStock; // Only show items in stock
+    return matchesSearch && matchesCategory && matchesStock;
   });
 
   const handleAddToCart = (item: Item) => {
     addItem(item, 1);
   };
 
-  const handleToggleFavorite = (item: Item) => {
-    if (isFavorite(item.id)) {
-      removeFromFavorites(item.id);
-    } else {
-      addToFavorites(item);
+  const handleToggleFavorite = async (item: Item) => {
+    try {
+      if (isFavorite(item.id)) {
+        await removeFromFavorites(item.id);
+      } else {
+        await addToFavorites(item);
+      }
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
     }
   };
 
@@ -73,6 +133,39 @@ export default function CatalogScreen() {
     setModalVisible(false);
     setSelectedItem(null);
   };
+
+  // Loading state
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Catalog</Text>
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#0F766E" />
+          <Text style={styles.loadingText}>Loading products...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Catalog</Text>
+        </View>
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   const renderItem = ({ item }: { item: Item }) => (
     <TouchableOpacity style={styles.itemCard} onPress={() => openModal(item)}>
@@ -168,6 +261,16 @@ export default function CatalogScreen() {
         style={styles.productsListContainer}
         contentContainerStyle={styles.productsGrid}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        ListEmptyComponent={() => (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="search-outline" size={48} color="#9CA3AF" />
+            <Text style={styles.emptyText}>No products found</Text>
+            <Text style={styles.emptySubtext}>Try adjusting your search or category filter</Text>
+          </View>
+        )}
       />
 
       {/* Product Modal */}
@@ -203,8 +306,17 @@ export default function CatalogScreen() {
                   <Text style={styles.modalDescription}>{selectedItem.description}</Text>
                   
                   <View style={styles.modalStockInfo}>
-                    <Ionicons name="checkmark-circle" size={16} color="#10B981" />
-                    <Text style={styles.modalStockText}>In Stock</Text>
+                    <Ionicons 
+                      name={selectedItem.inStock ? "checkmark-circle" : "close-circle"} 
+                      size={16} 
+                      color={selectedItem.inStock ? "#10B981" : "#EF4444"} 
+                    />
+                    <Text style={[
+                      styles.modalStockText,
+                      { color: selectedItem.inStock ? "#10B981" : "#EF4444" }
+                    ]}>
+                      {selectedItem.inStock ? "In Stock" : "Out of Stock"}
+                    </Text>
                   </View>
                   
                   <View style={styles.modalActions}>
@@ -220,11 +332,17 @@ export default function CatalogScreen() {
                     </TouchableOpacity>
                     
                     <TouchableOpacity
-                      style={styles.modalAddButton}
+                      style={[
+                        styles.modalAddButton,
+                        !selectedItem.inStock && styles.modalAddButtonDisabled
+                      ]}
                       onPress={() => {
-                        handleAddToCart(selectedItem);
-                        closeModal();
+                        if (selectedItem.inStock) {
+                          handleAddToCart(selectedItem);
+                          closeModal();
+                        }
                       }}
+                      disabled={!selectedItem.inStock}
                     >
                       <Ionicons name="add" size={20} color="white" />
                       <Text style={styles.modalAddButtonText}>Add to Cart</Text>
@@ -259,6 +377,57 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#6B7280',
     marginTop: 4,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#6B7280',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#EF4444',
+    textAlign: 'center',
+    marginVertical: 16,
+  },
+  retryButton: {
+    backgroundColor: '#0F766E',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#374151',
+    marginTop: 16,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    marginTop: 8,
+    textAlign: 'center',
   },
   searchContainer: {
     flexDirection: 'row',
@@ -466,7 +635,6 @@ const styles = StyleSheet.create({
   },
   modalStockText: {
     fontSize: 14,
-    color: '#10B981',
     fontWeight: '600',
   },
   modalActions: {
@@ -489,6 +657,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+  },
+  modalAddButtonDisabled: {
+    backgroundColor: '#9CA3AF',
   },
   modalAddButtonText: {
     color: 'white',

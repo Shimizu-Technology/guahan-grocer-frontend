@@ -1,0 +1,234 @@
+// API service for connecting to Guahan Grocer backend
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getApiUrl, config } from '../config/environment';
+
+interface ApiResponse<T> {
+  data?: T;
+  error?: string;
+  errors?: string[];
+}
+
+class ApiService {
+  private baseURL: string;
+
+  constructor() {
+    this.baseURL = getApiUrl();
+  }
+
+  private async getHeaders(includeAuth: boolean = true): Promise<HeadersInit> {
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+
+    if (includeAuth) {
+      const token = await AsyncStorage.getItem(config.STORAGE_KEYS.TOKEN);
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
+
+    return headers;
+  }
+
+  private async handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
+    try {
+      const data = await response.json();
+      
+      if (!response.ok) {
+        return {
+          error: data.error || `HTTP ${response.status}`,
+          errors: data.errors || [data.error || `HTTP ${response.status}`]
+        };
+      }
+
+      return { data };
+    } catch (error) {
+      console.error('API Response Error:', error);
+      return {
+        error: 'Network error or invalid JSON response',
+        errors: ['Network error or invalid JSON response']
+      };
+    }
+  }
+
+  private async makeRequest<T>(
+    endpoint: string, 
+    options: RequestInit, 
+    includeAuth: boolean = true
+  ): Promise<ApiResponse<T>> {
+    try {
+      const headers = await this.getHeaders(includeAuth);
+      const url = `${this.baseURL}${endpoint}`;
+      
+      console.log(`API Request: ${options.method} ${url}`);
+      
+      const response = await fetch(url, {
+        ...options,
+        headers: { ...headers, ...options.headers },
+      });
+
+      return this.handleResponse<T>(response);
+    } catch (error) {
+      console.error('API Request Error:', error);
+      return {
+        error: 'Network error',
+        errors: ['Network connection failed. Please check your internet connection.']
+      };
+    }
+  }
+
+  async get<T>(endpoint: string, includeAuth: boolean = true): Promise<ApiResponse<T>> {
+    return this.makeRequest<T>(endpoint, { method: 'GET' }, includeAuth);
+  }
+
+  async post<T>(endpoint: string, data?: any, includeAuth: boolean = true): Promise<ApiResponse<T>> {
+    return this.makeRequest<T>(
+      endpoint, 
+      { 
+        method: 'POST',
+        body: data ? JSON.stringify(data) : undefined,
+      }, 
+      includeAuth
+    );
+  }
+
+  async put<T>(endpoint: string, data?: any, includeAuth: boolean = true): Promise<ApiResponse<T>> {
+    return this.makeRequest<T>(
+      endpoint, 
+      { 
+        method: 'PUT',
+        body: data ? JSON.stringify(data) : undefined,
+      }, 
+      includeAuth
+    );
+  }
+
+  async delete<T>(endpoint: string, includeAuth: boolean = true): Promise<ApiResponse<T>> {
+    return this.makeRequest<T>(endpoint, { method: 'DELETE' }, includeAuth);
+  }
+
+  // File upload method for image uploads
+  async uploadFile<T>(endpoint: string, file: any, includeAuth: boolean = true): Promise<ApiResponse<T>> {
+    try {
+      const token = includeAuth ? await AsyncStorage.getItem(config.STORAGE_KEYS.TOKEN) : null;
+      
+      const formData = new FormData();
+      formData.append('image', {
+        uri: file.uri,
+        type: file.mimeType || 'image/jpeg',
+        name: file.fileName || 'image.jpg',
+      } as any);
+
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const url = `${this.baseURL}${endpoint}`;
+      console.log(`API Upload: POST ${url}`);
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+
+      return this.handleResponse<T>(response);
+    } catch (error) {
+      console.error('Upload Error:', error);
+      return {
+        error: 'Upload failed',
+        errors: ['File upload failed. Please try again.']
+      };
+    }
+  }
+
+  // Test API connectivity
+  async testConnection(): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseURL.replace('/api/v1', '')}/up`);
+      return response.ok;
+    } catch (error) {
+      console.error('Connection test failed:', error);
+      return false;
+    }
+  }
+}
+
+// Create singleton instance
+export const apiService = new ApiService();
+
+// Specific API endpoints
+export const authAPI = {
+  login: (email: string, password: string) => 
+    apiService.post('/auth/login', { email: email.toLowerCase().trim(), password }, false),
+  
+  register: (email: string, password: string, name: string, phone: string) => 
+    apiService.post('/auth/register', { user: { email: email.toLowerCase().trim(), password, name, phone } }, false),
+  
+  getCurrentUser: () => 
+    apiService.get('/auth/me'),
+  
+  logout: () => 
+    apiService.delete('/auth/logout'),
+};
+
+export const productsAPI = {
+  getAll: (category?: string) => {
+    const params = category ? `?category=${encodeURIComponent(category)}` : '';
+    return apiService.get(`/products${params}`, false);
+  },
+  
+  getById: (id: string) => 
+    apiService.get(`/products/${id}`, false),
+};
+
+export const favoritesAPI = {
+  getAll: () => 
+    apiService.get('/favorites'),
+  
+  add: (productId: string) => 
+    apiService.post('/favorites', { product_id: productId }),
+  
+  remove: (productId: string) => 
+    apiService.delete(`/favorites/${productId}`),
+};
+
+export const ordersAPI = {
+  getAll: () => 
+    apiService.get('/orders'),
+  
+  getById: (id: string) => 
+    apiService.get(`/orders/${id}`),
+  
+  getAvailable: () =>
+    apiService.get('/orders/available'),
+  
+  create: (orderData: any) => 
+    apiService.post('/orders', orderData),
+  
+  updateStatus: (id: string, status: string) => 
+    apiService.put(`/orders/${id}/status`, { status }),
+  
+  assignDriver: (id: string, driverId: string) =>
+    apiService.put(`/orders/${id}/assign_driver`, { driver_id: driverId }),
+};
+
+export const driverStatsAPI = {
+  getStats: (startDate?: string, endDate?: string) => {
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    return apiService.get(`/driver_stats${params.toString() ? '?' + params.toString() : ''}`);
+  },
+  
+  getStatsForDate: (date: string) =>
+    apiService.get(`/driver_stats/${date}`),
+};
+
+export const adminAPI = {
+  getDashboard: () => 
+    apiService.get('/admin/dashboard'),
+};
+
+export default apiService; 

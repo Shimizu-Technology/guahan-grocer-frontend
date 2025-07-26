@@ -9,105 +9,189 @@ import {
   StatusBar,
   RefreshControl,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
 import { useAuth } from '../../../context/AuthContext';
+import { ordersAPI, driverStatsAPI } from '../../../services/api';
 
-// Mock data for demonstration
-const mockAvailableOrders = [
-  {
-    id: 'ORD001',
-    customerName: 'Maria Santos',
-    itemCount: 12,
-    estimatedPayout: 25.50,
-    storeDistance: 1.2,
-    deliveryDistance: 2.8,
-    estimatedTime: 45,
-    storeName: 'PayLess Supermarket',
-    urgency: 'ASAP',
-  },
-  {
-    id: 'ORD002',
-    customerName: 'John Camacho',
-    itemCount: 7,
-    estimatedPayout: 18.75,
-    storeDistance: 0.8,
-    deliveryDistance: 1.5,
-    estimatedTime: 30,
-    storeName: 'Cost-U-Less',
-    urgency: 'Today Evening',
-  },
-  {
-    id: 'ORD003',
-    customerName: 'Rosa Cruz',
-    itemCount: 15,
-    estimatedPayout: 32.25,
-    storeDistance: 2.1,
-    deliveryDistance: 3.2,
-    estimatedTime: 60,
-    storeName: 'PayLess Supermarket',
-    urgency: 'Tomorrow Morning',
-  },
-];
+interface AvailableOrder {
+  id: string;
+  customerName: string;
+  itemCount: number;
+  estimatedPayout: number;
+  storeDistance?: number;
+  deliveryDistance?: number;
+  estimatedTime?: number;
+  storeName?: string;
+  urgency?: string;
+  deliveryAddress?: any;
+  total: number;
+  createdAt: string;
+}
 
-const mockActiveOrder = {
-  id: 'ORD004',
-  customerName: 'Ana Perez',
-  status: 'shopping',
-  progress: 12, // Total quantity found so far
-  totalItems: 18, // Total quantity needed
-  estimatedPayout: 22.00,
-  timeElapsed: 18,
-};
+interface ActiveOrder {
+  id: string;
+  customerName: string;
+  status: string;
+  progress: number;
+  totalItems: number;
+  estimatedPayout: number;
+  timeElapsed?: number;
+  deliveryAddress?: any;
+}
 
 export default function DriverDashboard() {
   const { user } = useAuth();
-  const [availableOrders, setAvailableOrders] = useState(mockAvailableOrders);
-  const [activeOrder, setActiveOrder] = useState(mockActiveOrder);
-  const [todayEarnings, setTodayEarnings] = useState(127.50);
-  const [todayDeliveries, setTodayDeliveries] = useState(6);
+  const [availableOrders, setAvailableOrders] = useState<AvailableOrder[]>([]);
+  const [activeOrder, setActiveOrder] = useState<ActiveOrder | null>(null);
+  const [todayEarnings, setTodayEarnings] = useState(0);
+  const [todayDeliveries, setTodayDeliveries] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
+  // Fetch all driver data
+  const fetchDriverData = async (showLoading = true) => {
+    try {
+      if (showLoading) setLoading(true);
+      setError(null);
+
+      // Fetch available orders
+      const availableOrdersResponse = await ordersAPI.getAvailable();
+      if (availableOrdersResponse.data) {
+        const formattedOrders = (availableOrdersResponse.data as any[]).map((order: any) => ({
+          id: order.id,
+          customerName: 'Customer', // Backend doesn't expose customer names for privacy
+          itemCount: order.items?.length || 0,
+          estimatedPayout: order.estimatedPayout || 0,
+          total: order.total,
+          deliveryAddress: order.deliveryAddress,
+          createdAt: order.createdAt,
+          urgency: getUrgencyFromDate(order.createdAt),
+          storeName: order.storeName || 'Store', // Use store name from backend or fallback
+          storeDistance: order.storeDistance || 0, // Use distance from backend
+          deliveryDistance: order.deliveryDistance || 0, // Use distance from backend
+          estimatedTime: order.estimatedTime || 30, // Use time from backend or reasonable default
+        }));
+        setAvailableOrders(formattedOrders);
+      }
+
+      // Fetch driver's current orders to find active order
+      const myOrdersResponse = await ordersAPI.getAll();
+      if (myOrdersResponse.data) {
+        const orders = myOrdersResponse.data as any[];
+        const currentActiveOrder = orders.find((order: any) => 
+          ['shopping', 'delivering'].includes(order.status)
+        );
+        
+        if (currentActiveOrder) {
+          setActiveOrder({
+            id: currentActiveOrder.id,
+            customerName: 'Customer',
+            status: currentActiveOrder.status,
+            progress: calculateProgress(currentActiveOrder),
+            totalItems: currentActiveOrder.items?.length || 0,
+            estimatedPayout: currentActiveOrder.estimatedPayout || 0,
+            deliveryAddress: currentActiveOrder.deliveryAddress,
+          });
+        } else {
+          setActiveOrder(null);
+        }
+      }
+
+      // Fetch today's driver stats
+      const today = new Date().toISOString().split('T')[0];
+      const statsResponse = await driverStatsAPI.getStatsForDate(today);
+      if (statsResponse.data) {
+        const stats = statsResponse.data as any;
+        setTodayEarnings(stats.totalEarnings || 0);
+        setTodayDeliveries(stats.totalDeliveries || 0);
+      }
+
+    } catch (err) {
+      console.error('Failed to fetch driver data:', err);
+      setError('Failed to load dashboard data. Please try again.');
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  };
+
+  // Initial load
+  useEffect(() => {
+    fetchDriverData();
+  }, []);
+
+  // Refresh handler
   const onRefresh = async () => {
     setRefreshing(true);
-    // Simulate data refresh
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await fetchDriverData(false);
     setRefreshing(false);
   };
 
-  const handleAcceptOrder = (orderId: string) => {
-    Alert.alert(
-      'Accept Order',
-      'Are you ready to shop for this order?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Accept',
-          onPress: () => {
-            // Remove from available orders
-            setAvailableOrders(prev => prev.filter(order => order.id !== orderId));
-            // Set as active order
-            const acceptedOrder = mockAvailableOrders.find(order => order.id === orderId);
-            if (acceptedOrder) {
-              setActiveOrder({
-                id: acceptedOrder.id,
-                customerName: acceptedOrder.customerName,
-                status: 'accepted',
-                progress: 0,
-                totalItems: acceptedOrder.itemCount,
-                estimatedPayout: acceptedOrder.estimatedPayout,
-                timeElapsed: 0,
-              });
-              // Navigate to order details
-              router.push(`/driver/order/${orderId}`);
-            }
-          }
-        }
-      ]
-    );
+  // Helper functions
+  const getUrgencyFromDate = (createdAt: string): string => {
+    const created = new Date(createdAt);
+    const now = new Date();
+    const hoursSinceCreated = (now.getTime() - created.getTime()) / (1000 * 60 * 60);
+    
+    if (hoursSinceCreated < 1) return 'ASAP';
+    if (hoursSinceCreated < 4) return 'Today';
+    return 'Today Evening';
   };
+
+  const calculateProgress = (order: any): number => {
+    if (!order.items) return 0;
+    const foundItems = order.items.filter((item: any) => 
+      ['found', 'substituted'].includes(item.status)
+    ).length;
+    return Math.min(foundItems, order.items.length);
+  };
+
+  const handleAcceptOrder = async (orderId: string) => {
+    try {
+      // For now, just navigate to the order. In real implementation,
+      // we'd call an API to assign the order to the driver
+      router.push(`/driver/order/${orderId}`);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to accept order. Please try again.');
+    }
+  };
+
+  const handleContinueOrder = () => {
+    if (activeOrder) {
+      router.push(`/driver/order/${activeOrder.id}`);
+    }
+  };
+
+  // Loading state
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#0F766E" />
+          <Text style={styles.loadingText}>Loading dashboard...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={() => fetchDriverData()}>
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   const getUrgencyColor = (urgency: string) => {
     switch (urgency) {
@@ -243,10 +327,10 @@ export default function DriverDashboard() {
                       <View 
                         style={[
                           styles.urgencyDot, 
-                          { backgroundColor: getUrgencyColor(order.urgency) }
+                          { backgroundColor: getUrgencyColor(order.urgency || 'Today') }
                         ]} 
                       />
-                      <Text style={styles.urgencyText}>{order.urgency}</Text>
+                      <Text style={styles.urgencyText}>{order.urgency || 'Today'}</Text>
                     </View>
                   </View>
 
@@ -559,5 +643,41 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 100, // Increased for new tab height
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#6B7280',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#F8FAFC',
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#EF4444',
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  retryButton: {
+    backgroundColor: '#0F766E',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 20,
+  },
+  retryButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
 }); 

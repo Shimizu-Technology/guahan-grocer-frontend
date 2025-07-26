@@ -15,7 +15,7 @@ This is the React Native version of the Guahan Grocer app, migrated from the ori
   - **Cart**: Shopping cart with quantity management
   - **Profile**: User profile with stats and account management
 - **Navigation**: File-based routing with Expo Router
-- **Data**: Mock data for products, users, and orders
+- **Data**: Real API integration with Rails backend
 - **Styling**: Native styling with consistent color scheme
 
 ### 🎨 Design System

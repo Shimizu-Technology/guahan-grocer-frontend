@@ -1,13 +1,14 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User } from '../types';
-import { mockUsers } from '../data/mockData';
+import { authAPI } from '../services/api';
 
 interface AuthContextType {
   user: User | null;
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  register: (email: string, password: string, name: string, phone: string) => Promise<void>;
+  logout: () => Promise<void>;
   isLoading: boolean;
 }
 
@@ -32,53 +33,105 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loadStoredAuth = async () => {
     try {
+      setIsLoading(true); // Ensure loading is true at start
       const storedToken = await AsyncStorage.getItem('token');
+      
       if (storedToken) {
-        // Decode JWT to get user info (mock implementation)
+        // Verify token with backend and get current user
         try {
-          const payload = JSON.parse(atob(storedToken.split('.')[1]));
-          const foundUser = mockUsers.find(u => u.id === payload.userId);
-          if (foundUser) {
-            setUser(foundUser);
+          const response = await authAPI.getCurrentUser();
+          if (response.data && (response.data as any).user) {
+            setUser((response.data as any).user);
             setToken(storedToken);
+          } else {
+            // Token is invalid, remove it
+            console.error('Token validation failed: Invalid response from server');
+            await clearAuthData();
           }
         } catch (error) {
-          await AsyncStorage.removeItem('token');
+          console.error('Token validation failed during initial check:', error);
+          await clearAuthData();
         }
       }
     } catch (error) {
-      console.error('Error loading auth:', error);
+      console.error('Error loading stored auth:', error);
+      await clearAuthData();
     } finally {
-      setIsLoading(false);
+      setIsLoading(false); // Set loading false when done
     }
   };
 
-  const login = async (email: string, password: string) => {
-    // Mock login - in real app, this would call POST /api/sessions
-    const foundUser = mockUsers.find(u => u.email === email);
-    if (foundUser && password === 'password') {
-      const mockToken = btoa(JSON.stringify({ userId: foundUser.id, role: foundUser.role })) + '.mocktoken.signature';
-      await AsyncStorage.setItem('token', mockToken);
-      setUser(foundUser);
-      setToken(mockToken);
-    } else {
-      throw new Error('Invalid credentials');
-    }
-  };
-
-  const logout = async () => {
+  const clearAuthData = async () => {
     try {
       await AsyncStorage.removeItem('token');
       setUser(null);
       setToken(null);
     } catch (error) {
-      console.error('Error during logout:', error);
+      console.error('Error clearing auth data:', error);
+    }
+  };
+
+  const login = async (email: string, password: string) => {
+    try {
+      const response = await authAPI.login(email, password);
+      
+      if (response.data) {
+        const { token: newToken, user: userData } = response.data as any;
+        
+        if (newToken && userData) {
+          await AsyncStorage.setItem('token', newToken);
+          setUser(userData);
+          setToken(newToken);
+        } else {
+          throw new Error('Login response missing token or user data');
+        }
+      } else {
+        throw new Error(response.error || 'Login failed');
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      throw error;
+    }
+  };
+
+  const register = async (email: string, password: string, name: string, phone: string) => {
+    try {
+      const response = await authAPI.register(email, password, name, phone);
+      
+      if (response.data) {
+        const { token: newToken, user: userData } = response.data as any;
+        
+        if (newToken && userData) {
+          await AsyncStorage.setItem('token', newToken);
+          setUser(userData);
+          setToken(newToken);
+        } else {
+          throw new Error('Registration response missing token or user data');
+        }
+      } else {
+        throw new Error(response.error || 'Registration failed');
+      }
+    } catch (error) {
+      console.error('Registration error:', error);
+      throw error;
+    }
+  };
+
+  const logout = async () => {
+    try {
+      // Call backend logout endpoint (optional for JWT)
+      await authAPI.logout();
+    } catch (error) {
+      console.error('Logout API error:', error);
+      // Continue with local logout even if API call fails
+    } finally {
+      await clearAuthData();
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, isLoading }}>
-      {children}
+    <AuthContext.Provider value={{ user, token, login, register, logout, isLoading }}>
+      {!isLoading && children}
     </AuthContext.Provider>
   );
 }; 

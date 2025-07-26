@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   StyleSheet,
   SafeAreaView,
   Image,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -16,14 +17,30 @@ import { Item } from '../../types';
 
 export default function FavoritesScreen() {
   const { addItem } = useCart();
-  const { favorites, removeFromFavorites } = useFavorites();
+  const { favorites, removeFromFavorites, syncFavorites } = useFavorites();
+  const [refreshing, setRefreshing] = useState(false);
 
   const handleAddToCart = (item: Item) => {
     addItem(item, 1);
   };
 
-  const handleRemoveFavorite = (itemId: string) => {
-    removeFromFavorites(itemId);
+  const handleRemoveFavorite = async (itemId: string) => {
+    try {
+      await removeFromFavorites(itemId);
+    } catch (error) {
+      console.error('Error removing favorite:', error);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await syncFavorites();
+    } catch (error) {
+      console.error('Error refreshing favorites:', error);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const renderItem = ({ item }: { item: Item }) => (
@@ -90,6 +107,9 @@ export default function FavoritesScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
       />
     </SafeAreaView>
   );

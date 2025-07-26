@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,27 +7,97 @@ import {
   StatusBar,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useAuth } from '../../../context/AuthContext';
+import { adminAPI } from '../../../services/api';
+
+interface DashboardStats {
+  total_orders: number;
+  total_customers: number;
+  active_drivers: number;
+  revenue_today: number;
+  revenue_total: number;
+  orders_today: number;
+  pending_orders: number;
+  low_stock_products: number;
+}
+
+interface RecentActivity {
+  type: string;
+  message: string;
+  time: string;
+}
+
+interface DashboardData {
+  stats: DashboardStats;
+  recent_activity: RecentActivity[];
+}
 
 export default function AdminDashboard() {
   const { user } = useAuth();
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const statsData = [
-    { label: 'Total Orders', value: '1,247', icon: 'receipt-outline', color: '#0F766E' },
-    { label: 'Active Drivers', value: '23', icon: 'car-outline', color: '#DC2626' },
-    { label: 'Total Customers', value: '892', icon: 'people-outline', color: '#7C3AED' },
-    { label: 'Revenue Today', value: '$2,840', icon: 'cash-outline', color: '#EA580C' },
-  ];
+  // Fetch dashboard data
+  const fetchDashboardData = async () => {
+    try {
+      setError(null);
+      const response = await adminAPI.getDashboard();
+      setDashboardData(response.data as DashboardData);
+    } catch (err) {
+      console.error('Error fetching dashboard data:', err);
+      setError('Failed to load dashboard data');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
-  const recentActivity = [
-    { type: 'order', message: 'New order #ORD005 from Maria Santos', time: '2 min ago' },
-    { type: 'driver', message: 'Jane Driver completed delivery #ORD004', time: '5 min ago' },
-    { type: 'customer', message: 'New customer John Doe registered', time: '12 min ago' },
-    { type: 'inventory', message: 'Low stock alert: Organic Spinach', time: '18 min ago' },
-  ];
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchDashboardData();
+  };
+
+  // Generate stats data from backend
+  const statsData = dashboardData ? [
+    { 
+      label: 'Total Orders', 
+      value: dashboardData.stats.total_orders.toLocaleString(), 
+      icon: 'receipt-outline', 
+      color: '#0F766E' 
+    },
+    { 
+      label: 'Active Drivers', 
+      value: dashboardData.stats.active_drivers.toString(), 
+      icon: 'car-outline', 
+      color: '#DC2626' 
+    },
+    { 
+      label: 'Total Customers', 
+      value: dashboardData.stats.total_customers.toLocaleString(), 
+      icon: 'people-outline', 
+      color: '#7C3AED' 
+    },
+    { 
+      label: 'Revenue Today', 
+      value: `$${dashboardData.stats.revenue_today.toFixed(2)}`, 
+      icon: 'cash-outline', 
+      color: '#EA580C' 
+    },
+  ] : [];
+
+  // Use real activity data from backend
+  const recentActivity = dashboardData?.recent_activity || [];
 
   const quickActions = [
     { title: 'Add Product', icon: 'add-circle-outline', color: '#0F766E' },
@@ -36,11 +106,37 @@ export default function AdminDashboard() {
     { title: 'User Support', icon: 'help-circle-outline', color: '#EA580C' },
   ];
 
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.container, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color="#0F766E" />
+        <Text style={styles.loadingText}>Loading dashboard...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={[styles.container, styles.errorContainer]}>
+        <Ionicons name="warning-outline" size={48} color="#DC2626" />
+        <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={fetchDashboardData}>
+          <Text style={styles.retryButtonText}>Retry</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <>
       <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
       <SafeAreaView style={styles.container}>
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <ScrollView 
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+        >
           {/* Header */}
           <View style={styles.header}>
             <View>
@@ -277,5 +373,37 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 100, // Increased for new tab height
+  },
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#6B7280',
+  },
+  errorContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  errorText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#DC2626',
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: 16,
+    backgroundColor: '#0F766E',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 }); 
