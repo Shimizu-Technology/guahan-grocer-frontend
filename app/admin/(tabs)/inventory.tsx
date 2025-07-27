@@ -1057,6 +1057,7 @@ const styles = StyleSheet.create({
   },
   fieldContainer: {
     marginBottom: 20,
+    position: 'relative',
   },
   fieldLabel: {
     fontSize: 16,
@@ -1163,6 +1164,11 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
   },
   categoryListContainer: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    zIndex: 1000,
     borderWidth: 1.5,
     borderColor: '#E2E8F0',
     borderTopWidth: 0,
