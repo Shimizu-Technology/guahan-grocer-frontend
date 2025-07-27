@@ -14,6 +14,9 @@ export interface Item {
   imageUrl?: string;
   description?: string;
   inStock: boolean;
+  available?: boolean;
+  trackInventory?: boolean;
+  stockStatus?: string;
 }
 
 export interface CartItem {

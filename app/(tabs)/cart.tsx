@@ -15,6 +15,7 @@ import { router } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { CartItem } from '../../types';
+import SimpleImage from '../../components/shared/SimpleImage';
 
 export default function CartScreen() {
   const { user } = useAuth();
@@ -73,7 +74,11 @@ export default function CartScreen() {
 
   const renderItem = ({ item }: { item: CartItem }) => (
     <View style={styles.itemCard}>
-      <Image source={{ uri: item.item.imageUrl }} style={styles.itemImage} />
+      <SimpleImage 
+        src={item.item.imageUrl} 
+        style={styles.itemImage}
+        accessibilityLabel={`${item.item.name} cart item image`}
+      />
       
       <View style={styles.itemInfo}>
         <Text style={styles.itemName}>{item.item.name}</Text>

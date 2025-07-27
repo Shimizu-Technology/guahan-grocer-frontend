@@ -210,6 +210,11 @@ export const productsAPI = {
     return apiService.get(`/products${params}`, false);
   },
   
+  getAllAvailable: (category?: string) => {
+    const categoryParam = category ? `category=${encodeURIComponent(category)}&` : '';
+    return apiService.get(`/products?${categoryParam}available=true`, false);
+  },
+  
   getFeatured: () => 
     apiService.get('/products/featured', false),
   

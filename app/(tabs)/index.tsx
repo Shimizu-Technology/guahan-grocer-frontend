@@ -19,6 +19,7 @@ import { useCart } from '../../context/CartContext';
 import { useFavorites } from '../../context/FavoritesContext';
 import { productsAPI, categoriesAPI } from '../../services/api';
 import { Item } from '../../types';
+import SimpleImage from '../../components/shared/SimpleImage';
 
 interface Category {
   name: string;
@@ -58,7 +59,7 @@ export default function HomeScreen() {
       if (showLoading) setLoading(true);
       setError(null);
 
-      const response = await productsAPI.getAll();
+      const response = await productsAPI.getAllAvailable();
       if (response.data) {
         // Convert backend format to frontend format
         const formattedProducts: Item[] = (response.data as any[]).map((product: any) => ({
@@ -69,6 +70,9 @@ export default function HomeScreen() {
           unit: product.unit,
           description: product.description,
           inStock: product.inStock,
+          available: product.available,
+          trackInventory: product.trackInventory,
+          stockStatus: product.stockStatus,
           imageUrl: product.imageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300',
         }));
 
@@ -99,6 +103,9 @@ export default function HomeScreen() {
           unit: product.unit,
           description: product.description,
           inStock: product.inStock,
+          available: product.available,
+          trackInventory: product.trackInventory,
+          stockStatus: product.stockStatus,
           imageUrl: product.imageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300',
         }));
 
@@ -106,9 +113,11 @@ export default function HomeScreen() {
       }
     } catch (error) {
       console.error('Failed to fetch featured products:', error);
-      // Fallback to first 4 in-stock products if featured API fails
-      const inStockProducts = products.filter(product => product.inStock);
-      setFeaturedProducts(inStockProducts.slice(0, 4));
+      // Fallback to first 4 available products if featured API fails
+      const availableProducts = products.filter(product => 
+        product.available !== undefined ? product.available : product.inStock
+      );
+      setFeaturedProducts(availableProducts.slice(0, 4));
     }
   };
 
@@ -208,7 +217,11 @@ export default function HomeScreen() {
       style={styles.productCard}
       onPress={() => navigateToProduct(item.id)}
     >
-      <Image source={{ uri: item.imageUrl }} style={styles.productImage} />
+      <SimpleImage 
+        src={item.imageUrl} 
+        style={styles.productImage}
+        accessibilityLabel={`${item.name} featured product`}
+      />
       <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
       <Text style={styles.productPrice}>${item.price.toFixed(2)}</Text>
     </TouchableOpacity>

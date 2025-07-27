@@ -29,6 +29,9 @@ interface Product {
   lowStock: boolean;
   unit: string;
   status: string;
+  trackInventory: boolean;
+  stockStatus: string;
+  available: boolean;
 }
 
 interface Category {
@@ -47,6 +50,7 @@ interface NewProduct {
   unit: string;
   unitId?: number;
   image?: ImagePicker.ImagePickerAsset;
+  trackInventory: boolean;
 }
 
 export default function AdminInventory() {
@@ -73,6 +77,7 @@ export default function AdminInventory() {
     description: '',
     stockQuantity: '',
     unit: '',
+    trackInventory: true,
   });
 
   // Dynamic categories and units from backend
@@ -112,20 +117,23 @@ export default function AdminInventory() {
       if (response.data) {
         const formattedProducts = (response.data as any[]).map((product: any) => ({
           id: product.id,
-          name: product.name,
-          category: product.category,
-          price: product.price,
+          name: product.name || 'Unnamed Product',
+          category: product.category || 'Uncategorized',
+          price: product.price || '0.00',
           stock: product.stockQuantity || 0,
-          lowStock: (product.stockQuantity || 0) < 10,
+          lowStock: product.trackInventory ? (product.stockQuantity || 0) < 10 : false,
           unit: product.unit || 'item',
-          status: product.in_stock ? 'active' : 'out_of_stock',
+          status: product.available ? 'active' : 'out_of_stock',
+          trackInventory: product.trackInventory || false,
+          stockStatus: product.stockStatus || 'In Stock',
+          available: product.available || false,
         }));
 
         setProducts(formattedProducts);
 
         // Calculate categories from actual product data
         const categoryStats = formattedProducts.reduce((acc: Record<string, number>, product: Product) => {
-          const category = product.category;
+          const category = product.category || 'Uncategorized';
           acc[category] = (acc[category] || 0) + 1;
           return acc;
         }, {});
@@ -166,9 +174,16 @@ export default function AdminInventory() {
     fetchProducts();
   };
 
-  const getStockStatus = (stock: number, lowStock: boolean) => {
-    if (stock === 0) return { text: 'Out of Stock', color: '#DC2626' };
-    if (lowStock) return { text: 'Low Stock', color: '#EA580C' };
+  const getStockStatus = (product: Product) => {
+    if (product.stockStatus === 'Always Available') {
+      return { text: 'Always Available', color: '#8B5CF6' };
+    }
+    if (product.stockStatus === 'Out of Stock') {
+      return { text: 'Out of Stock', color: '#DC2626' };
+    }
+    if (product.stockStatus === 'Low Stock') {
+      return { text: 'Low Stock', color: '#EA580C' };
+    }
     return { text: 'In Stock', color: '#16A34A' };
   };
 
@@ -184,6 +199,7 @@ export default function AdminInventory() {
       description: '',
       stockQuantity: '',
       unit: '',
+      trackInventory: true,
     });
     setCategoryDropdownOpen(false);
     setUnitDropdownOpen(false);
@@ -282,7 +298,7 @@ export default function AdminInventory() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [4, 3],
-      quality: 1,
+      quality: 0.7, // Compress to 70% quality to reduce file size
     });
 
     if (!result.canceled) {
@@ -291,7 +307,11 @@ export default function AdminInventory() {
   };
 
   const submitProduct = async () => {
-    if (!newProduct.name || !newProduct.category || !newProduct.price || !newProduct.stockQuantity || !newProduct.unit) {
+    // Validate required fields - stock quantity only required if tracking inventory
+    const requiredFieldsMissing = !newProduct.name || !newProduct.category || !newProduct.price || !newProduct.unit || 
+      (newProduct.trackInventory && !newProduct.stockQuantity);
+    
+    if (requiredFieldsMissing) {
       Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
@@ -305,7 +325,10 @@ export default function AdminInventory() {
       }
       formData.append('product[price]', newProduct.price);
       formData.append('product[description]', newProduct.description);
-      formData.append('product[stock_quantity]', newProduct.stockQuantity);
+      formData.append('product[track_inventory]', newProduct.trackInventory.toString());
+      if (newProduct.trackInventory) {
+        formData.append('product[stock_quantity]', newProduct.stockQuantity);
+      }
       if (newProduct.unitId) {
         formData.append('product[unit_id]', newProduct.unitId.toString());
       }
@@ -321,7 +344,19 @@ export default function AdminInventory() {
       const response = await productsAPI.create(formData);
       
       if (response.data) {
-        Alert.alert('Success', 'Product created successfully!');
+        const successMessage = 'Product created successfully!';
+        const imageError = (response.data as any)?.imageUploadError;
+        
+        if (imageError) {
+          Alert.alert(
+            'Product Created', 
+            `${successMessage}\n\nWarning: Image upload failed - ${imageError}`,
+            [{ text: 'OK' }]
+          );
+        } else {
+          Alert.alert('Success', successMessage);
+        }
+        
         fetchProducts();
         closeAddModal();
       } else {
@@ -342,7 +377,7 @@ export default function AdminInventory() {
 
   const filteredProducts = selectedCategory === 'all' 
     ? products 
-    : products.filter(product => product.category.toLowerCase() === selectedCategory.toLowerCase());
+    : products.filter(product => product.category?.toLowerCase() === selectedCategory.toLowerCase());
 
   if (loading) {
     return (
@@ -441,7 +476,7 @@ export default function AdminInventory() {
             </View>
           ) : (
             filteredProducts.map((product) => {
-              const stockStatus = getStockStatus(product.stock, product.lowStock);
+              const stockStatus = getStockStatus(product);
               return (
                 <View key={product.id} style={styles.productCard}>
                   <View style={styles.productHeader}>
@@ -467,7 +502,7 @@ export default function AdminInventory() {
                   <View style={styles.productDetails}>
                     <Text style={styles.productPrice}>${product.price}</Text>
                     <Text style={styles.productStock}>
-                      {product.stock} {product.unit}
+                      {product.trackInventory ? `${product.stock} ${product.unit}` : 'Always Available'}
                     </Text>
                   </View>
                   
@@ -709,17 +744,37 @@ export default function AdminInventory() {
                   </View>
                 </View>
 
-                {/* Stock Quantity */}
+                {/* Track Inventory Toggle */}
                 <View style={styles.fieldContainer}>
-                  <Text style={styles.fieldLabel}>Stock Quantity *</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="Enter quantity"
-                    value={newProduct.stockQuantity}
-                    onChangeText={(text) => setNewProduct(prev => ({ ...prev, stockQuantity: text }))}
-                    keyboardType="numeric"
-                  />
+                  <View style={styles.toggleContainer}>
+                    <View>
+                      <Text style={styles.fieldLabel}>Track Inventory</Text>
+                      <Text style={styles.toggleDescription}>
+                        {newProduct.trackInventory ? 'Monitor stock levels and quantities' : 'Product is always available'}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.toggle, newProduct.trackInventory && styles.toggleActive]}
+                      onPress={() => setNewProduct(prev => ({ ...prev, trackInventory: !prev.trackInventory, stockQuantity: prev.trackInventory ? '' : prev.stockQuantity }))}
+                    >
+                      <View style={[styles.toggleKnob, newProduct.trackInventory && styles.toggleKnobActive]} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
+
+                {/* Stock Quantity - Only show if tracking inventory */}
+                {newProduct.trackInventory && (
+                  <View style={styles.fieldContainer}>
+                    <Text style={styles.fieldLabel}>Stock Quantity *</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="Enter quantity"
+                      value={newProduct.stockQuantity}
+                      onChangeText={(text) => setNewProduct(prev => ({ ...prev, stockQuantity: text }))}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                )}
 
                 {/* Description */}
                 <View style={styles.fieldContainer}>
@@ -749,7 +804,12 @@ export default function AdminInventory() {
                   disabled={isSubmitting}
                 >
                   {isSubmitting ? (
-                    <ActivityIndicator size="small" color="white" />
+                    <View style={styles.submitButtonContent}>
+                      <ActivityIndicator size="small" color="white" />
+                      <Text style={[styles.submitButtonText, { marginLeft: 8 }]}>
+                        {newProduct.image ? 'Uploading...' : 'Creating...'}
+                      </Text>
+                    </View>
                   ) : (
                     <Text style={styles.submitButtonText}>Create Product</Text>
                   )}
@@ -1150,6 +1210,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: 'white',
   },
+  submitButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   // Category Dropdown Styles
   dropdownButton: {
     flexDirection: 'row',
@@ -1233,5 +1298,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#E2E8F0',
+  },
+  // Toggle Styles
+  toggleContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  toggleDescription: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 4,
+  },
+  toggle: {
+    width: 56,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#E5E7EB',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  toggleActive: {
+    backgroundColor: '#0F766E',
+  },
+  toggleKnob: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  toggleKnobActive: {
+    transform: [{ translateX: 24 }],
   },
 }); 

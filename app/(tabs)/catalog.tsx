@@ -21,6 +21,7 @@ import { useCart } from '../../context/CartContext';
 import { useFavorites } from '../../context/FavoritesContext';
 import { productsAPI, categoriesAPI } from '../../services/api';
 import { Item } from '../../types';
+import SimpleImage from '../../components/shared/SimpleImage';
 
 export default function CatalogScreen() {
   const { category, productId } = useLocalSearchParams();
@@ -45,7 +46,7 @@ export default function CatalogScreen() {
       if (showLoading) setLoading(true);
       setError(null);
       
-      const response = await productsAPI.getAll();
+      const response = await productsAPI.getAllAvailable();
       if (response.data) {
         // Convert backend format to frontend format
         const formattedProducts = (response.data as any[]).map((product: any) => ({
@@ -56,6 +57,9 @@ export default function CatalogScreen() {
           unit: product.unit,
           description: product.description,
           inStock: product.inStock,
+          available: product.available, // New field for proper availability checking
+          trackInventory: product.trackInventory,
+          stockStatus: product.stockStatus,
           imageUrl: product.imageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300', // Fallback image
         }));
         setProducts(formattedProducts);
@@ -134,8 +138,8 @@ export default function CatalogScreen() {
   const filteredItems = products.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
-    const matchesStock = item.inStock; // Only show items in stock
-    return matchesSearch && matchesCategory && matchesStock;
+    // No need to filter by availability since API already returns only available products
+    return matchesSearch && matchesCategory;
   });
 
   const handleAddToCart = (item: Item) => {
@@ -229,7 +233,11 @@ export default function CatalogScreen() {
 
   const renderItem = ({ item }: { item: Item }) => (
     <TouchableOpacity style={styles.itemCard} onPress={() => openModal(item)}>
-      <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
+      <SimpleImage 
+        src={item.imageUrl} 
+        style={styles.itemImage}
+        accessibilityLabel={`${item.name} product image`}
+      />
       
       <TouchableOpacity
         style={styles.favoriteButton}
@@ -348,7 +356,11 @@ export default function CatalogScreen() {
                   <Ionicons name="close" size={24} color="#6B7280" />
                 </TouchableOpacity>
                 
-                <Image source={{ uri: selectedItem.imageUrl }} style={styles.modalImage} />
+                <SimpleImage 
+                  src={selectedItem.imageUrl} 
+                  style={styles.modalImage}
+                  accessibilityLabel={`${selectedItem.name} detailed image`}
+                />
                 
                 <View style={styles.modalInfo}>
                   <Text style={styles.modalTitle}>{selectedItem.name}</Text>

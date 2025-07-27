@@ -18,6 +18,7 @@ import { useLocalSearchParams, router, Stack } from 'expo-router';
 
 import { useAuth } from '../../../context/AuthContext';
 import { ordersAPI } from '../../../services/api';
+import SimpleImage from '../../../components/shared/SimpleImage';
 
 interface OrderItem {
   id: string;
@@ -419,10 +420,15 @@ export default function DriverOrderDetails() {
                   styles.itemCard,
                   !isShoppingStarted && styles.itemCardDisabled
                 ]}>
-                  <Image source={{ uri: item.imageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300' }} style={[
-                    styles.itemImage,
-                    !isShoppingStarted && styles.itemImageDisabled
-                  ]} />
+                  <SimpleImage 
+                    src={item.imageUrl} 
+                    style={StyleSheet.flatten([
+                      styles.itemImage,
+                      !isShoppingStarted && styles.itemImageDisabled
+                    ])}
+                    accessibilityLabel={`${item.name} product image`}
+                    fallbackSrc="https://images.unsplash.com/photo-1542838132-92c53300491e?w=300"
+                  />
                   
                   <View style={styles.itemDetails}>
                     <Text style={[

@@ -17,6 +17,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { useFavorites } from '../../context/FavoritesContext';
 import { Item } from '../../types';
+import SimpleImage from '../../components/shared/SimpleImage';
 
 export default function FavoritesScreen() {
   const { user } = useAuth();
@@ -82,7 +83,11 @@ export default function FavoritesScreen() {
 
   const renderItem = ({ item }: { item: Item }) => (
     <View style={styles.itemCard}>
-      <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
+      <SimpleImage 
+        src={item.imageUrl} 
+        style={styles.itemImage}
+        accessibilityLabel={`${item.name} favorite item image`}
+      />
       
       <View style={styles.itemInfo}>
         <Text style={styles.itemName}>{item.name}</Text>
