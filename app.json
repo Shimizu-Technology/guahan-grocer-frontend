@@ -1,26 +1,30 @@
 {
   "expo": {
-    "name": "react-native-frontend",
-    "slug": "react-native-frontend",
+    "name": "Guahan Grocer",
+    "slug": "guahan-grocer",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "reactnativefrontend",
+    "scheme": "guahangrocer",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "description": "Fresh groceries delivered to your door on Guam",
+    "privacy": "public",
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0F766E"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.guahangrocer.app"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#0F766E"
       },
+      "package": "com.guahangrocer.app",
       "edgeToEdgeEnabled": true
     },
     "web": {

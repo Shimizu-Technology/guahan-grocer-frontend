@@ -243,6 +243,14 @@ export default function SignupScreen() {
               </TouchableOpacity>
             </View>
           </View>
+
+          {/* Browse as Guest - Outside form container */}
+          <TouchableOpacity
+            style={styles.guestButton}
+            onPress={() => router.replace('/(tabs)' as any)}
+          >
+            <Text style={styles.guestButtonText}>Browse as Guest</Text>
+          </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -259,9 +267,10 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     paddingHorizontal: 24,
-    paddingVertical: 20,
+    paddingTop: 60,
+    paddingBottom: 40,
   },
   logoContainer: {
     alignItems: 'center',
@@ -353,6 +362,20 @@ const styles = StyleSheet.create({
   loginLink: {
     fontSize: 16,
     color: '#0F766E',
+    fontWeight: '600',
+  },
+  guestButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 24,
+  },
+  guestButtonText: {
+    color: 'white',
+    fontSize: 16,
     fontWeight: '600',
   },
 }); 

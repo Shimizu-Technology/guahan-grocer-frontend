@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { useFavorites } from '../../context/FavoritesContext';
-import { productsAPI } from '../../services/api';
+import { productsAPI, categoriesAPI } from '../../services/api';
 import { Item } from '../../types';
 
 interface Category {
@@ -39,17 +39,17 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Category configuration with icons and colors
-  const categoryConfig: Record<string, { icon: string; color: string }> = {
-    'Fruits': { icon: '🍎', color: '#EF4444' },
-    'Vegetables': { icon: '🥬', color: '#10B981' },
-    'Dairy': { icon: '🥛', color: '#3B82F6' },
-    'Bakery': { icon: '🍞', color: '#F59E0B' },
-    'Meat': { icon: '🥩', color: '#DC2626' },
-    'Beverages': { icon: '🥤', color: '#8B5CF6' },
-    'Pantry': { icon: '🥫', color: '#6B7280' },
-    'Snacks': { icon: '🍪', color: '#F97316' },
-    'Frozen': { icon: '🧊', color: '#06B6D4' },
+  // Fallback icons for any categories that might not have icons set
+  const fallbackIcons: Record<string, string> = {
+    'Fruits': '🍎',
+    'Vegetables': '🥬', 
+    'Dairy': '🥛',
+    'Bakery': '🍞',
+    'Meat': '🥩',
+    'Beverages': '🥤',
+    'Pantry': '🥫',
+    'Snacks': '🍪',
+    'Frozen': '🧊',
   };
 
   // Fetch products from API
@@ -73,28 +73,6 @@ export default function HomeScreen() {
         }));
 
         setProducts(formattedProducts);
-        
-        // Calculate categories from actual product data
-        const categoryStats = formattedProducts.reduce((acc: Record<string, number>, product) => {
-          if (product.inStock) {
-            acc[product.category] = (acc[product.category] || 0) + 1;
-          }
-          return acc;
-        }, {});
-
-        // Create categories array with icons and colors
-        const categoriesArray: Category[] = Object.entries(categoryStats).map(([name, count]) => ({
-          name,
-          icon: categoryConfig[name]?.icon || '📦',
-          color: categoryConfig[name]?.color || '#6B7280',
-          items: count,
-        }));
-
-        setCategories(categoriesArray);
-        
-        // Set featured products (first 4 in-stock products)
-        const inStockProducts = formattedProducts.filter(product => product.inStock);
-        setFeaturedProducts(inStockProducts.slice(0, 4));
 
       } else {
         setError(response.error || 'Failed to load products');
@@ -107,10 +85,87 @@ export default function HomeScreen() {
     }
   };
 
+  // Fetch featured products from API
+  const fetchFeaturedProducts = async () => {
+    try {
+      const response = await productsAPI.getFeatured();
+      if (response.data) {
+        // Convert backend format to frontend format
+        const formattedFeatured: Item[] = (response.data as any[]).map((product: any) => ({
+          id: product.id.toString(),
+          name: product.name,
+          category: product.category,
+          price: parseFloat(product.price),
+          unit: product.unit,
+          description: product.description,
+          inStock: product.inStock,
+          imageUrl: product.imageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300',
+        }));
+
+        setFeaturedProducts(formattedFeatured);
+      }
+    } catch (error) {
+      console.error('Failed to fetch featured products:', error);
+      // Fallback to first 4 in-stock products if featured API fails
+      const inStockProducts = products.filter(product => product.inStock);
+      setFeaturedProducts(inStockProducts.slice(0, 4));
+    }
+  };
+
+  // Fetch categories from API
+  const fetchCategories = async () => {
+    try {
+      const response = await categoriesAPI.getAll();
+      if (response.data) {
+        // Map backend categories to frontend format with dynamic icons/colors and product counts
+        const categoriesWithStats: Category[] = (response.data as any[]).map((cat: any) => {
+          // Count products in this category
+          const productCount = products.filter(product => 
+            product.category === cat.name
+          ).length;
+          
+          return {
+            name: cat.name,
+            icon: cat.icon || fallbackIcons[cat.name] || '📦',
+            color: cat.color || '#6B7280',
+            items: productCount,
+          };
+        });
+        
+        setCategories(categoriesWithStats);
+      }
+    } catch (error) {
+      console.error('Failed to fetch categories:', error);
+      // Fallback to deriving from products if API fails
+      const categoryStats = products.reduce((acc: Record<string, number>, product) => {
+        if (product.category && product.inStock) {
+          acc[product.category] = (acc[product.category] || 0) + 1;
+        }
+        return acc;
+      }, {});
+
+      const fallbackCategories: Category[] = Object.entries(categoryStats).map(([name, count]) => ({
+        name,
+        icon: fallbackIcons[name] || '📦',
+        color: '#6B7280',
+        items: count,
+      }));
+      setCategories(fallbackCategories);
+    }
+  };
+
   // Initial load
   useEffect(() => {
     fetchProducts();
+    fetchFeaturedProducts();
   }, []);
+
+  // Fetch categories when products change
+  useEffect(() => {
+    if (products.length > 0) {
+      fetchCategories();
+    }
+  }, [products]);
 
   // Refresh handler
   const onRefresh = async () => {

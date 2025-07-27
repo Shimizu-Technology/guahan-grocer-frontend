@@ -14,15 +14,17 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, router } from 'expo-router';
 
+import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { useFavorites } from '../../context/FavoritesContext';
-import { productsAPI } from '../../services/api';
+import { productsAPI, categoriesAPI } from '../../services/api';
 import { Item } from '../../types';
 
 export default function CatalogScreen() {
   const { category, productId } = useLocalSearchParams();
+  const { user } = useAuth();
   const { addItem } = useCart();
   const { addToFavorites, removeFromFavorites, isFavorite } = useFavorites();
   
@@ -31,6 +33,7 @@ export default function CatalogScreen() {
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [products, setProducts] = useState<Item[]>([]);
+  const [categories, setCategories] = useState<string[]>(['All']);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,6 +73,7 @@ export default function CatalogScreen() {
   // Initial load
   useEffect(() => {
     fetchProducts();
+    fetchCategories();
   }, []);
 
   // Refresh handler
@@ -84,7 +88,21 @@ export default function CatalogScreen() {
     fetchProducts();
   };
 
-  const categories = ['All', ...new Set(products.map(item => item.category))];
+  // Fetch categories from API
+  const fetchCategories = async () => {
+    try {
+      const response = await categoriesAPI.getAll();
+      if (response.data) {
+        const categoryNames = (response.data as any[]).map((cat: any) => cat.name);
+        setCategories(['All', ...categoryNames]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch categories:', error);
+      // Fallback to deriving from products if API fails
+      const fallbackCategories = ['All', ...new Set(products.map(item => item.category))];
+      setCategories(fallbackCategories);
+    }
+  };
 
   // Handle category parameter from navigation - only when parameter actually changes
   useEffect(() => {
@@ -121,10 +139,40 @@ export default function CatalogScreen() {
   });
 
   const handleAddToCart = (item: Item) => {
+    if (!user) {
+      Alert.alert(
+        'Sign In Required', 
+        'Please sign in to add items to your cart.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign In', onPress: () => {
+            setModalVisible(false); // Close any open modals
+            router.push('/login');
+          }}
+        ]
+      );
+      return;
+    }
+    
     addItem(item, 1);
   };
 
   const handleToggleFavorite = async (item: Item) => {
+    if (!user) {
+      Alert.alert(
+        'Sign In Required', 
+        'Please sign in to add items to your favorites.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign In', onPress: () => {
+            setModalVisible(false); // Close any open modals
+            router.push('/login');
+          }}
+        ]
+      );
+      return;
+    }
+    
     try {
       if (isFavorite(item.id)) {
         await removeFromFavorites(item.id);

@@ -12,10 +12,12 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
+import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { CartItem } from '../../types';
 
 export default function CartScreen() {
+  const { user } = useAuth();
   const { items, total, updateQuantity, removeItem, clearCart } = useCart();
 
   const handleQuantityChange = (itemId: string, change: number) => {
@@ -53,6 +55,19 @@ export default function CartScreen() {
       Alert.alert('Cart Empty', 'Add some items to your cart before checking out.');
       return;
     }
+    
+    if (!user) {
+      Alert.alert(
+        'Sign In Required', 
+        'Please sign in to continue with your order.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign In', onPress: () => router.push('/login') }
+        ]
+      );
+      return;
+    }
+    
     router.push('/checkout');
   };
 

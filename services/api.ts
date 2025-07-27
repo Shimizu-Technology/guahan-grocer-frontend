@@ -107,6 +107,37 @@ class ApiService {
     return this.makeRequest<T>(endpoint, { method: 'DELETE' }, includeAuth);
   }
 
+  // Form data upload method for multipart requests
+  async postFormData<T>(endpoint: string, formData: FormData, includeAuth: boolean = true): Promise<ApiResponse<T>> {
+    try {
+      const token = includeAuth ? await AsyncStorage.getItem(config.STORAGE_KEYS.TOKEN) : null;
+      const headers: HeadersInit = {};
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      // Don't set Content-Type for FormData - let the browser set it with boundary
+      const url = `${this.baseURL}${endpoint}`;
+      
+      console.log(`API Request: POST ${url}`);
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+
+      return this.handleResponse<T>(response);
+    } catch (error) {
+      console.error('API FormData Request Error:', error);
+      return {
+        error: 'Network error',
+        errors: ['Network connection failed. Please check your internet connection.']
+      };
+    }
+  }
+
   // File upload method for image uploads
   async uploadFile<T>(endpoint: string, file: any, includeAuth: boolean = true): Promise<ApiResponse<T>> {
     try {
@@ -179,8 +210,14 @@ export const productsAPI = {
     return apiService.get(`/products${params}`, false);
   },
   
+  getFeatured: () => 
+    apiService.get('/products/featured', false),
+  
   getById: (id: string) => 
     apiService.get(`/products/${id}`, false),
+  
+  create: (formData: FormData) => 
+    apiService.postFormData('/products', formData),
 };
 
 export const favoritesAPI = {
@@ -229,6 +266,40 @@ export const driverStatsAPI = {
 export const adminAPI = {
   getDashboard: () => 
     apiService.get('/admin/dashboard'),
+};
+
+export const categoriesAPI = {
+  getAll: () => 
+    apiService.get('/categories'),
+  
+  getById: (id: string) => 
+    apiService.get(`/categories/${id}`),
+  
+  create: (categoryData: { name: string; description?: string }) => 
+    apiService.post('/categories', { category: categoryData }),
+  
+  update: (id: string, categoryData: { name: string; description?: string; active?: boolean }) => 
+    apiService.put(`/categories/${id}`, { category: categoryData }),
+  
+  delete: (id: string) => 
+    apiService.delete(`/categories/${id}`),
+};
+
+export const unitsAPI = {
+  getAll: () => 
+    apiService.get('/units'),
+  
+  getById: (id: string) => 
+    apiService.get(`/units/${id}`),
+  
+  create: (unitData: { name: string; symbol: string }) => 
+    apiService.post('/units', { unit: unitData }),
+  
+  update: (id: string, unitData: { name: string; symbol: string; active?: boolean }) => 
+    apiService.put(`/units/${id}`, { unit: unitData }),
+  
+  delete: (id: string) => 
+    apiService.delete(`/units/${id}`),
 };
 
 export default apiService; 

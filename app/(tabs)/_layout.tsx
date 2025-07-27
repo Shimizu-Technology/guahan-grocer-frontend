@@ -68,10 +68,8 @@ export default function TabLayout() {
   const { user, isLoading } = useAuth();
 
   useEffect(() => {
-    if (!isLoading && !user) {
-      router.replace('/login');
-    } else if (!isLoading && user) {
-      // Redirect non-customer users immediately
+    if (!isLoading && user) {
+      // Redirect authenticated non-customer users to their appropriate layouts
       if (user.role === 'driver') {
         router.replace('/driver/(tabs)');
       } else if (user.role === 'admin') {
@@ -88,18 +86,18 @@ export default function TabLayout() {
     );
   }
 
-  if (!user) {
-    return null; // Will redirect to login
-  }
-
-  // Only render customer tabs for customer users
-  if (user.role !== 'customer') {
+  // Block non-customer authenticated users (they should be redirected above)
+  if (user && user.role !== 'customer') {
     return null; // Will redirect to appropriate layout
   }
 
-  // Customer tabs
-  if (user.role === 'customer') {
-    return (
+  // Allow both guests (user === null) and customers (user.role === 'customer')
+
+  // Render tabs for guests and customers
+  const isCustomer = user?.role === 'customer';
+  const isGuest = !user;
+
+  return (
       <Tabs
         screenOptions={{
           tabBarActiveTintColor: '#1F2937', // Dark gray for active tabs
@@ -173,7 +171,4 @@ export default function TabLayout() {
         />
       </Tabs>
     );
-  }
-
-  return null;
 }

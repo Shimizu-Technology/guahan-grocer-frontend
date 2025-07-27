@@ -9,7 +9,8 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView
+  SafeAreaView,
+  ScrollView
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { router } from 'expo-router';
@@ -56,7 +57,11 @@ export default function LoginScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        <View style={styles.content}>
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
           {/* Logo */}
           <View style={styles.logoContainer}>
             <Text style={styles.logoText}>
@@ -113,17 +118,16 @@ export default function LoginScreen() {
                 <Text style={styles.signupLink}>Sign Up</Text>
               </TouchableOpacity>
             </View>
-
-            {/* Demo Credentials */}
-            <View style={styles.demoContainer}>
-              <Text style={styles.demoTitle}>Demo Accounts:</Text>
-              <Text style={styles.demoText}>Customer: customer@example.com</Text>
-              <Text style={styles.demoText}>Driver: driver@example.com</Text>
-              <Text style={styles.demoText}>Admin: admin@example.com</Text>
-              <Text style={styles.demoText}>Password: password</Text>
-            </View>
           </View>
-        </View>
+
+          {/* Browse as Guest - Outside form container */}
+          <TouchableOpacity
+            style={styles.guestButton}
+            onPress={() => router.replace('/(tabs)' as any)}
+          >
+            <Text style={styles.guestButtonText}>Browse as Guest</Text>
+          </TouchableOpacity>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -137,10 +141,12 @@ const styles = StyleSheet.create({
   keyboardView: {
     flex: 1,
   },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'flex-start',
     paddingHorizontal: 24,
+    paddingTop: 80,
+    paddingBottom: 40,
   },
   logoContainer: {
     alignItems: 'center',
@@ -211,22 +217,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
   },
-  demoContainer: {
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-    paddingTop: 24,
-  },
-  demoTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 8,
-  },
-  demoText: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 4,
-  },
   signupLinkContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -240,6 +230,20 @@ const styles = StyleSheet.create({
   signupLink: {
     fontSize: 16,
     color: '#0F766E',
+    fontWeight: '600',
+  },
+  guestButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  guestButtonText: {
+    color: 'white',
+    fontSize: 16,
     fontWeight: '600',
   },
 }); 

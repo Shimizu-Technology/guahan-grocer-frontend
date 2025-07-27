@@ -8,19 +8,56 @@ import {
   SafeAreaView,
   Image,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 
+import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { useFavorites } from '../../context/FavoritesContext';
 import { Item } from '../../types';
 
 export default function FavoritesScreen() {
+  const { user } = useAuth();
   const { addItem } = useCart();
   const { favorites, removeFromFavorites, syncFavorites } = useFavorites();
   const [refreshing, setRefreshing] = useState(false);
 
+  // Show login prompt for guests
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.guestContainer}>
+          <Ionicons name="heart-outline" size={64} color="#D1D5DB" />
+          <Text style={styles.guestTitle}>Sign in to view favorites</Text>
+          <Text style={styles.guestSubtitle}>
+            Create an account or sign in to save your favorite products
+          </Text>
+          <TouchableOpacity 
+            style={styles.loginButton}
+            onPress={() => router.push('/login')}
+          >
+            <Text style={styles.loginButtonText}>Sign In</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   const handleAddToCart = (item: Item) => {
+    if (!user) {
+      Alert.alert(
+        'Sign In Required', 
+        'Please sign in to add items to your cart.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign In', onPress: () => router.push('/login') }
+        ]
+      );
+      return;
+    }
+    
     addItem(item, 1);
   };
 
@@ -228,5 +265,37 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     textAlign: 'center',
     lineHeight: 24,
+  },
+  guestContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  guestTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginTop: 20,
+    textAlign: 'center',
+  },
+  guestSubtitle: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 32,
+    lineHeight: 24,
+  },
+  loginButton: {
+    backgroundColor: '#0F766E',
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  loginButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
 }); 

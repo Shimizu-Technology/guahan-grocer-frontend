@@ -20,6 +20,27 @@ export default function ProfileScreen() {
   const { itemCount, total } = useCart();
   const { favoritesCount } = useFavorites();
 
+  // Show login prompt for guests
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.guestContainer}>
+          <Ionicons name="person-outline" size={64} color="#D1D5DB" />
+          <Text style={styles.guestTitle}>Sign in to view profile</Text>
+          <Text style={styles.guestSubtitle}>
+            Create an account or sign in to manage your profile and view order history
+          </Text>
+          <TouchableOpacity 
+            style={styles.loginButton}
+            onPress={() => router.push('/login')}
+          >
+            <Text style={styles.loginButtonText}>Sign In</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   const handleLogout = () => {
     Alert.alert(
       'Sign Out',
@@ -361,6 +382,38 @@ const styles = StyleSheet.create({
   },
   logoutText: {
     color: '#EF4444',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  guestContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  guestTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginTop: 20,
+    textAlign: 'center',
+  },
+  guestSubtitle: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 32,
+    lineHeight: 24,
+  },
+  loginButton: {
+    backgroundColor: '#0F766E',
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  loginButtonText: {
+    color: 'white',
     fontSize: 16,
     fontWeight: '600',
   },

@@ -39,8 +39,10 @@ export const FavoritesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         syncFavorites();
       }
     } else {
+      // For guests, clear favorites instead of loading cached ones
       setLastSyncUserId(null);
-      loadLocalFavorites();
+      setFavorites([]);
+      clearLocalFavorites();
     }
   }, [user, token]);
 
@@ -60,6 +62,14 @@ export const FavoritesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       await AsyncStorage.setItem('favorites', JSON.stringify(favoritesToSave));
     } catch (error) {
       console.error('Error saving local favorites:', error);
+    }
+  };
+
+  const clearLocalFavorites = async () => {
+    try {
+      await AsyncStorage.removeItem('favorites');
+    } catch (error) {
+      console.error('Error clearing local favorites:', error);
     }
   };
 
