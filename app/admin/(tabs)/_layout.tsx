@@ -60,6 +60,15 @@ export default function AdminTabLayout() {
         }}
       />
       <Tabs.Screen
+        name="stores"
+        options={{
+          title: 'Stores',
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon name={focused ? 'storefront' : 'storefront-outline'} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="users"
         options={{
           title: 'Users',

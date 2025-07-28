@@ -254,6 +254,9 @@ export const ordersAPI = {
   
   assignDriver: (id: string, driverId: string) =>
     apiService.put(`/orders/${id}/assign_driver`, { driver_id: driverId }),
+  
+  calculateDeliveryFee: (deliveryAddress: any) =>
+    apiService.post('/orders/calculate_delivery_fee', { delivery_address: deliveryAddress }),
 };
 
 export const driverStatsAPI = {
@@ -305,6 +308,26 @@ export const unitsAPI = {
   
   delete: (id: string) => 
     apiService.delete(`/units/${id}`),
+};
+
+export const storesAPI = {
+  getAll: () => 
+    apiService.get('/stores'),
+  
+  getById: (id: string) => 
+    apiService.get(`/stores/${id}`),
+  
+  create: (storeData: any) => 
+    apiService.post('/stores', { store: storeData }),
+  
+  update: (id: string, storeData: any) => 
+    apiService.put(`/stores/${id}`, { store: storeData }),
+  
+  delete: (id: string) => 
+    apiService.delete(`/stores/${id}`),
+    
+  toggleActive: (id: string) => 
+    apiService.put(`/stores/${id}/toggle_active`),
 };
 
 export default apiService; 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,12 +9,15 @@ import {
   TextInput,
   Alert,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, Stack } from 'expo-router';
 
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import { ordersAPI } from '../services/api';
+import { locationService, LocationResult } from '../services/locationService';
 
 export default function CheckoutScreen() {
   const { items, total, clearCart } = useCart();
@@ -34,8 +37,144 @@ export default function CheckoutScreen() {
   // Payment Method
   const [paymentMethod, setPaymentMethod] = useState('card');
   
+  // Tip
+  const [tipPercentage, setTipPercentage] = useState(15); // Default 15%
+  const [customTipAmount, setCustomTipAmount] = useState('');
+  const [tipOption, setTipOption] = useState('percentage'); // 'percentage' | 'custom' | 'none'
+  
   // Loading State
   const [isProcessing, setIsProcessing] = useState(false);
+  
+  // Delivery Fee Calculation
+  const [deliveryFee, setDeliveryFee] = useState(0); // No fee until calculated
+  const [deliveryFeeLoading, setDeliveryFeeLoading] = useState(false);
+  const [distanceDetails, setDistanceDetails] = useState<any>(null);
+  const [closestStore, setClosestStore] = useState<string | null>(null);
+  const [validationWarning, setValidationWarning] = useState<any>(null);
+  const [addressCorrection, setAddressCorrection] = useState<any>(null);
+  const [addressError, setAddressError] = useState<any>(null);
+  
+  // Location Services
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
+
+  // Calculate delivery fee based on address
+  const calculateDeliveryFee = async () => {
+    if (!streetAddress || !city || !zipCode) {
+      // Reset when address incomplete - fee will not be shown anyway
+      setDeliveryFee(0);
+      setDistanceDetails(null);
+      setClosestStore(null);
+      setValidationWarning(null);
+      setAddressCorrection(null);
+      setAddressError(null);
+      return;
+    }
+
+    setDeliveryFeeLoading(true);
+    
+    try {
+      const deliveryAddress = {
+        streetAddress,
+        apartmentUnit,
+        city,
+        state,
+        zipCode
+      };
+
+      const response = await ordersAPI.calculateDeliveryFee(deliveryAddress);
+      
+      if (response.data) {
+        const data = response.data as any;
+        setDeliveryFee(data.delivery_fee || 2.99);
+        setDistanceDetails(data.distance_details);
+        setClosestStore(data.closest_store);
+        setValidationWarning(data.validation_warning || null);
+        setAddressCorrection(data.address_correction || null);
+        setAddressError(data.address_error || null);
+      } else {
+        // Fallback if API fails
+        setDeliveryFee(2.99);
+        setDistanceDetails(null);
+        setClosestStore(null);
+        setValidationWarning(null);
+        setAddressCorrection(null);
+        setAddressError(null);
+      }
+    } catch (error) {
+      console.error('Failed to calculate delivery fee:', error);
+      // Fallback if API fails
+      setDeliveryFee(2.99);
+      setDistanceDetails(null);
+      setClosestStore(null);
+      setValidationWarning(null);
+      setAddressCorrection(null);
+      setAddressError(null);
+    } finally {
+      setDeliveryFeeLoading(false);
+    }
+  };
+
+  // Recalculate delivery fee when address changes
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      calculateDeliveryFee();
+    }, 500); // Debounce API calls
+
+    return () => clearTimeout(timeoutId);
+  }, [streetAddress, apartmentUnit, city, state, zipCode]);
+
+  // Handle getting current location
+  const handleUseCurrentLocation = async () => {
+    setIsGettingLocation(true);
+    
+    try {
+      // Add a small delay to make the UI feel more responsive
+      const result: LocationResult = await Promise.race([
+        locationService.getCurrentLocationWithAddress(),
+        // Add a timeout to prevent indefinite waiting
+        new Promise<LocationResult>((_, reject) => 
+          setTimeout(() => reject(new Error('Location request timed out')), 15000)
+        )
+      ]);
+      
+      if (result.success && result.address) {
+        // Update form fields with location data
+        setStreetAddress(result.address.streetAddress);
+        setApartmentUnit(''); // Clear apartment unit
+        setCity(result.address.city);
+        setState(result.address.state);
+        setZipCode(result.address.zipCode);
+        
+        // Show success message with shorter text
+        Alert.alert(
+          'Location Found!',
+          `Address: ${result.address.streetAddress}, ${result.address.city}`,
+          [{ text: 'OK' }]
+        );
+      } else {
+        // Show error message
+        Alert.alert(
+          'Location Error',
+          result.error || 'Unable to get your current location. Please enter your address manually.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('Error getting current location:', error);
+      
+      // Check if it was a timeout
+      const isTimeout = error instanceof Error && error.message.includes('timeout');
+      Alert.alert(
+        'Location Error',
+        isTimeout 
+          ? 'Location request timed out. Please check your GPS signal and try again.'
+          : 'An unexpected error occurred while getting your location. Please try again.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsGettingLocation(false);
+    }
+  };
 
   const deliveryOptions = [
     { id: 'ASAP', label: 'ASAP (30-45 min)', price: 0 },
@@ -46,15 +185,20 @@ export default function CheckoutScreen() {
 
   const paymentMethods = [
     { id: 'card', label: 'Credit/Debit Card', icon: 'card' },
-    { id: 'apple-pay', label: 'Apple Pay', icon: 'logo-apple' },
-    { id: 'cash', label: 'Cash on Delivery', icon: 'cash' },
   ];
 
-  const deliveryFee = 2.99;
-  const tax = total * 0.047; // 4.7% GU tax
-  const finalTotal = total + deliveryFee + tax;
 
-  const isFormValid = streetAddress && city && zipCode;
+  
+  // Calculate tip amount
+  const tipAmount = tipOption === 'none' ? 0 : 
+                   tipOption === 'custom' ? parseFloat(customTipAmount) || 0 :
+                   (total * tipPercentage) / 100;
+  
+  // Only include delivery fee in total when it's being displayed
+  const shouldShowDeliveryFee = streetAddress || deliveryFeeLoading || distanceDetails;
+  const finalTotal = total + (shouldShowDeliveryFee ? deliveryFee : 0) + tipAmount;
+
+  const isFormValid = streetAddress && city && zipCode && !deliveryFeeLoading;
 
   const handlePlaceOrder = async () => {
     if (!isFormValid) {
@@ -65,27 +209,55 @@ export default function CheckoutScreen() {
     setIsProcessing(true);
     
     try {
-      // Simulate order processing
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Prepare order data
+      const orderData = {
+        order: {
+          total: finalTotal,
+          tip_amount: tipAmount,
+          tip_percentage: tipOption === 'percentage' ? tipPercentage : 0,
+          delivery_address: {
+            streetAddress,
+            apartmentUnit,
+            city,
+            state,
+            zipCode
+          },
+          eta: 45, // Default 45 minutes
+          delivery_fee: shouldShowDeliveryFee ? deliveryFee : 0,
+          closest_store: closestStore,
+          distance_details: distanceDetails
+        },
+        items: items.map(item => ({
+          itemId: item.item.id,
+          quantity: item.quantity,
+          price: item.item.price
+        }))
+      };
+
+      // Create order via API
+      const response = await ordersAPI.create(orderData);
       
-      const orderId = Math.random().toString(36).substr(2, 9).toUpperCase();
-      
-      // Clear cart and navigate to success
-      clearCart();
-      
-      // For now, show success alert - later we can create an order confirmation screen
-      Alert.alert(
-        'Order Placed Successfully!',
-        `Order #${orderId} has been placed. You'll receive updates via SMS.`,
-        [
-                     {
-             text: 'Continue Shopping',
-             onPress: () => router.replace('/(tabs)')
-           }
-        ]
-      );
+      if (response.data) {
+        // Clear cart and navigate to success
+        clearCart();
+        
+        const orderData = response.data as any;
+        Alert.alert(
+          'Order Placed Successfully!',
+          `Order #${orderData.id || 'NEW'} has been placed. You'll receive updates via SMS.`,
+          [
+            {
+              text: 'Continue Shopping',
+              onPress: () => router.replace('/(tabs)')
+            }
+          ]
+        );
+      } else {
+        throw new Error('Failed to create order');
+      }
       
     } catch (error) {
+      console.error('Order creation failed:', error);
       Alert.alert('Order Failed', 'There was an issue placing your order. Please try again.');
     } finally {
       setIsProcessing(false);
@@ -127,7 +299,26 @@ export default function CheckoutScreen() {
 
         {/* Delivery Address */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Delivery Address</Text>
+          <View style={styles.addressHeaderContainer}>
+            <Text style={[styles.sectionTitle, styles.sectionTitleInline]}>Delivery Address</Text>
+            <TouchableOpacity
+              style={[
+                styles.locationButton,
+                isGettingLocation && styles.locationButtonDisabled
+              ]}
+              onPress={handleUseCurrentLocation}
+              disabled={isGettingLocation}
+            >
+              {isGettingLocation ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Ionicons name="location" size={14} color="#FFFFFF" />
+              )}
+              <Text style={styles.locationButtonText}>
+                {isGettingLocation ? 'Finding...' : 'Use Location'}
+              </Text>
+            </TouchableOpacity>
+          </View>
           <View style={styles.formCard}>
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Street Address *</Text>
@@ -282,6 +473,98 @@ export default function CheckoutScreen() {
           </View>
         </View>
 
+        {/* Tip */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Tip Your Driver</Text>
+          <View style={styles.tipCard}>
+            {/* Percentage Buttons Row */}
+            <View style={styles.tipPercentageRow}>
+              {[10, 15, 20].map((percentage) => (
+                <TouchableOpacity
+                  key={percentage}
+                  style={[
+                    styles.tipPercentageButton,
+                    tipOption === 'percentage' && tipPercentage === percentage && styles.tipPercentageButtonSelected
+                  ]}
+                  onPress={() => {
+                    setTipOption('percentage');
+                    setTipPercentage(percentage);
+                    setCustomTipAmount('');
+                  }}
+                >
+                  <Text style={[
+                    styles.tipPercentageText,
+                    tipOption === 'percentage' && tipPercentage === percentage && styles.tipPercentageTextSelected
+                  ]}>
+                    {percentage}%
+                  </Text>
+                  <Text style={[
+                    styles.tipPercentageAmount,
+                    tipOption === 'percentage' && tipPercentage === percentage && styles.tipPercentageAmountSelected
+                  ]}>
+                    ${((total * percentage) / 100).toFixed(2)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            
+            {/* Other Options Row */}
+            <View style={styles.tipOtherRow}>
+              <TouchableOpacity
+                style={[
+                  styles.tipOtherButton,
+                  tipOption === 'custom' && styles.tipOtherButtonSelected
+                ]}
+                onPress={() => {
+                  setTipOption('custom');
+                  setTipPercentage(0);
+                }}
+              >
+                <Text style={[
+                  styles.tipOtherText,
+                  tipOption === 'custom' && styles.tipOtherTextSelected
+                ]}>
+                  Other
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[
+                  styles.tipOtherButton,
+                  tipOption === 'none' && styles.tipOtherButtonSelected
+                ]}
+                onPress={() => {
+                  setTipOption('none');
+                  setTipPercentage(0);
+                  setCustomTipAmount('');
+                }}
+              >
+                <Text style={[
+                  styles.tipOtherText,
+                  tipOption === 'none' && styles.tipOtherTextSelected
+                ]}>
+                  No tip
+                </Text>
+              </TouchableOpacity>
+            </View>
+            
+            {/* Custom Amount Input */}
+            {tipOption === 'custom' && (
+              <View style={styles.tipCustomInputContainer}>
+                <Text style={styles.tipCustomLabel}>Enter amount:</Text>
+                <TextInput
+                  style={styles.tipCustomInput}
+                  placeholder="0.00"
+                  value={customTipAmount}
+                  onChangeText={setCustomTipAmount}
+                  keyboardType="numeric"
+                  returnKeyType="done"
+                />
+              </View>
+            )}
+          </View>
+        </View>
+
         {/* Order Total */}
         <View style={styles.section}>
           <View style={styles.totalCard}>
@@ -289,14 +572,81 @@ export default function CheckoutScreen() {
               <Text style={styles.totalLabel}>Subtotal</Text>
               <Text style={styles.totalAmount}>${total.toFixed(2)}</Text>
             </View>
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Delivery Fee</Text>
-              <Text style={styles.totalAmount}>${deliveryFee.toFixed(2)}</Text>
-            </View>
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Tax</Text>
-              <Text style={styles.totalAmount}>${tax.toFixed(2)}</Text>
-            </View>
+            {/* Only show delivery fee when address is being entered or calculated */}
+            {shouldShowDeliveryFee && (
+              <View style={styles.totalRow}>
+                <View style={styles.deliveryFeeContainer}>
+                  <Text style={styles.totalLabel}>Delivery Fee</Text>
+                  {deliveryFeeLoading && (
+                    <Text style={styles.deliveryFeeSubtext}>Calculating...</Text>
+                  )}
+                  {distanceDetails && !deliveryFeeLoading && (
+                    <Text style={styles.deliveryFeeSubtext}>
+                      {distanceDetails.distance_text} from {distanceDetails.store_name}
+                    </Text>
+                  )}
+                  {!distanceDetails && !deliveryFeeLoading && isFormValid && (
+                    <Text style={styles.deliveryFeeSubtext}>
+                      From closest store
+                    </Text>
+                  )}
+                </View>
+                <View style={styles.deliveryFeeAmountContainer}>
+                  {deliveryFeeLoading ? (
+                    <ActivityIndicator size="small" color="#0F766E" />
+                  ) : (
+                    <Text style={styles.totalAmount}>${deliveryFee.toFixed(2)}</Text>
+                  )}
+                </View>
+              </View>
+            )}
+            {/* Address Correction Notice */}
+            {addressCorrection && (
+              <View style={styles.addressCorrectionContainer}>
+                <View style={styles.correctionHeader}>
+                  <Ionicons name="checkmark-circle" size={16} color="#059669" />
+                  <Text style={styles.correctionTitle}>Address Corrected</Text>
+                </View>
+                <Text style={styles.correctionMessage}>{addressCorrection.message}</Text>
+                <Text style={styles.correctionDetails}>
+                  📍 Using: {addressCorrection.corrected_address}
+                </Text>
+              </View>
+            )}
+            {/* Address Error Notice */}
+            {addressError && (
+              <View style={styles.addressErrorContainer}>
+                <View style={styles.errorHeader}>
+                  <Ionicons name="alert-circle" size={16} color="#DC2626" />
+                  <Text style={styles.errorTitle}>Address Not Found</Text>
+                </View>
+                <Text style={styles.errorMessage}>{addressError.message}</Text>
+                <Text style={styles.errorSuggestion}>
+                  💡 {addressError.suggestion}
+                </Text>
+              </View>
+            )}
+            {/* Address Validation Warning */}
+            {validationWarning && (
+              <View style={styles.validationWarningContainer}>
+                <View style={styles.warningHeader}>
+                  <Ionicons name="warning" size={16} color="#F59E0B" />
+                  <Text style={styles.warningTitle}>Address Notice</Text>
+                </View>
+                <Text style={styles.warningMessage}>{validationWarning.reason}</Text>
+                {validationWarning.suggestion && (
+                  <Text style={styles.warningSuggestion}>
+                    💡 {validationWarning.suggestion}
+                  </Text>
+                )}
+              </View>
+            )}
+            {tipAmount > 0 && (
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Tip</Text>
+                <Text style={styles.totalAmount}>${tipAmount.toFixed(2)}</Text>
+              </View>
+            )}
             <View style={styles.totalDivider} />
             <View style={styles.totalRow}>
               <Text style={styles.finalTotalLabel}>Total</Text>
@@ -320,7 +670,9 @@ export default function CheckoutScreen() {
           disabled={!isFormValid || isProcessing}
         >
           <Text style={styles.placeOrderButtonText}>
-            {isProcessing ? 'Processing...' : `Place Order • $${finalTotal.toFixed(2)}`}
+            {isProcessing ? 'Processing...' : 
+             deliveryFeeLoading ? 'Calculating delivery...' :
+             `Place Order • $${finalTotal.toFixed(2)}`}
           </Text>
         </TouchableOpacity>
       </View>
@@ -368,6 +720,11 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     marginBottom: 12,
     paddingHorizontal: 20,
+  },
+  sectionTitleInline: {
+    marginBottom: 0,
+    paddingHorizontal: 0,
+    flex: 1,
   },
   summaryCard: {
     backgroundColor: 'white',
@@ -571,5 +928,246 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 18,
     fontWeight: '600',
+  },
+  // Compact Tip Styles
+  tipCard: {
+    backgroundColor: 'white',
+    marginHorizontal: 20,
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  tipPercentageRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  tipPercentageButton: {
+    flex: 1,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+    marginHorizontal: 4,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  tipPercentageButtonSelected: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#0F766E',
+  },
+  tipPercentageText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  tipPercentageTextSelected: {
+    color: '#0F766E',
+  },
+  tipPercentageAmount: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 2,
+  },
+  tipPercentageAmountSelected: {
+    color: '#0F766E',
+  },
+  tipOtherRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  tipOtherButton: {
+    flex: 1,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+    marginHorizontal: 4,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  tipOtherButtonSelected: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#0F766E',
+  },
+  tipOtherText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  tipOtherTextSelected: {
+    color: '#0F766E',
+  },
+  tipCustomInputContainer: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tipCustomLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginRight: 8,
+  },
+  tipCustomInput: {
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 16,
+    width: 80,
+    textAlign: 'center',
+  },
+  // Delivery Fee Display Styles
+  deliveryFeeContainer: {
+    flex: 1,
+  },
+  deliveryFeeSubtext: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  deliveryFeeAmountContainer: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    minHeight: 24,
+  },
+  // Validation Warning Styles
+  validationWarningContainer: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+  },
+  warningHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  warningTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#92400E',
+    marginLeft: 6,
+  },
+  warningMessage: {
+    fontSize: 13,
+    color: '#92400E',
+    lineHeight: 18,
+  },
+  warningSuggestion: {
+    fontSize: 13,
+    color: '#92400E',
+    lineHeight: 18,
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  // Address Correction Styles
+  addressCorrectionContainer: {
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#059669',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+  },
+  correctionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  correctionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#047857',
+    marginLeft: 6,
+  },
+  correctionMessage: {
+    fontSize: 13,
+    color: '#047857',
+    lineHeight: 18,
+  },
+  correctionDetails: {
+    fontSize: 13,
+    color: '#047857',
+    lineHeight: 18,
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  // Address Error Styles
+  addressErrorContainer: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#DC2626',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+  },
+  errorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  errorTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#991B1B',
+    marginLeft: 6,
+  },
+  errorMessage: {
+    fontSize: 13,
+    color: '#991B1B',
+    lineHeight: 18,
+  },
+  errorSuggestion: {
+    fontSize: 13,
+    color: '#991B1B',
+    lineHeight: 18,
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  // Location Button Styles
+  addressHeaderContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 20,
+  },
+  locationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0F766E',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 4,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  locationButtonDisabled: {
+    backgroundColor: '#9CA3AF',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  locationButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
 }); 
