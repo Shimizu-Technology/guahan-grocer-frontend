@@ -32,9 +32,9 @@
       "package": "com.guahangrocer.app",
       "edgeToEdgeEnabled": true,
       "permissions": [
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "CAMERA"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.CAMERA"
       ]
     },
     "web": {
@@ -55,6 +55,7 @@
       "eas": {
         "projectId": "12feee7a-8a4a-4883-8801-5e3bd7287bed"
       }
-    }
+    },
+    "owner": "shimizutechnology"
   }
 }

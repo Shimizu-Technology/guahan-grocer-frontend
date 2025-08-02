@@ -25,8 +25,8 @@ const getBaseApiUrl = () => {
     }
   }
   
-  // Production URL (update when you deploy)
-  return 'http://localhost:3000/api/v1';
+  // Production URL (fallback if EXPO_PUBLIC_API_URL is not set)
+  return 'https://guahan-grocer-backend.onrender.com/api/v1';
 };
 
 export const config = {
