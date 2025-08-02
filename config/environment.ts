@@ -7,12 +7,7 @@ const isDevelopment = process.env.EXPO_PUBLIC_ENV === 'development' || __DEV__;
 
 // Helper function to get the correct API URL for the current environment
 const getBaseApiUrl = () => {
-  // Check if we have an environment variable set
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return process.env.EXPO_PUBLIC_API_URL;
-  }
-  
-  // For development, detect platform
+  // For development, use localhost
   if (isDevelopment) {
     // Use Platform.OS to detect the platform reliably
     if (Platform.OS === 'web') {
@@ -25,7 +20,7 @@ const getBaseApiUrl = () => {
     }
   }
   
-  // Production URL (fallback if EXPO_PUBLIC_API_URL is not set)
+  // Production URL - hardcoded since it's always the same
   return 'https://guahan-grocer-backend.onrender.com/api/v1';
 };
 
