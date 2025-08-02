@@ -20,6 +20,7 @@ const getBaseApiUrl = () => {
       return 'http://localhost:3000/api/v1';
     } else {
       // Mobile device (iOS/Android) needs to use the computer's IP address
+      // run ipconfig getifaddr en0 to get the IP address
       return 'http://192.168.1.190:3000/api/v1';
     }
   }

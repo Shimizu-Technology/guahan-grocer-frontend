@@ -22,7 +22,6 @@ interface AvailableOrder {
   customerName: string;
   itemCount: number;
   estimatedPayout: number;
-  storeDistance?: number;
   deliveryDistance?: number;
   estimatedTime?: number;
   storeName?: string;
@@ -30,6 +29,8 @@ interface AvailableOrder {
   deliveryAddress?: any;
   total: number;
   createdAt: string;
+  status?: string;
+  driverId?: string;
 }
 
 interface ActiveOrder {
@@ -44,11 +45,13 @@ interface ActiveOrder {
 }
 
 export default function DriverDashboard() {
-  const { user } = useAuth();
+  const { user, isOnline, toggleOnline } = useAuth();
   const [availableOrders, setAvailableOrders] = useState<AvailableOrder[]>([]);
   const [activeOrder, setActiveOrder] = useState<ActiveOrder | null>(null);
   const [todayEarnings, setTodayEarnings] = useState(0);
   const [todayDeliveries, setTodayDeliveries] = useState(0);
+  const [todayTips, setTodayTips] = useState(0);
+  const [todayBasePay, setTodayBasePay] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,47 +62,56 @@ export default function DriverDashboard() {
       if (showLoading) setLoading(true);
       setError(null);
 
-      // Fetch available orders
-      const availableOrdersResponse = await ordersAPI.getAvailable();
-      if (availableOrdersResponse.data) {
-        const formattedOrders = (availableOrdersResponse.data as any[]).map((order: any) => ({
-          id: order.id,
-          customerName: 'Customer', // Backend doesn't expose customer names for privacy
-          itemCount: order.items?.length || 0,
-          estimatedPayout: order.estimatedPayout || 0,
-          total: order.total,
-          deliveryAddress: order.deliveryAddress,
-          createdAt: order.createdAt,
-          urgency: getUrgencyFromDate(order.createdAt),
-          storeName: order.storeName || 'Store', // Use store name from backend or fallback
-          storeDistance: order.storeDistance || 0, // Use distance from backend
-          deliveryDistance: order.deliveryDistance || 0, // Use distance from backend
-          estimatedTime: order.estimatedTime || 30, // Use time from backend or reasonable default
-        }));
-        setAvailableOrders(formattedOrders);
-      }
-
-      // Fetch driver's current orders to find active order
-      const myOrdersResponse = await ordersAPI.getAll();
-      if (myOrdersResponse.data) {
-        const orders = myOrdersResponse.data as any[];
-        const currentActiveOrder = orders.find((order: any) => 
-          ['shopping', 'delivering'].includes(order.status)
-        );
-        
-        if (currentActiveOrder) {
-          setActiveOrder({
-            id: currentActiveOrder.id,
-            customerName: 'Customer',
-            status: currentActiveOrder.status,
-            progress: calculateProgress(currentActiveOrder),
-            totalItems: currentActiveOrder.items?.length || 0,
-            estimatedPayout: currentActiveOrder.estimatedPayout || 0,
-            deliveryAddress: currentActiveOrder.deliveryAddress,
-          });
-        } else {
-          setActiveOrder(null);
+      // Fetch orders (could be active orders or available orders based on driver state)
+      if (isOnline) {
+        const ordersResponse = await ordersAPI.getAvailable();
+        if (ordersResponse.data) {
+          const formattedOrders = (ordersResponse.data as any[]).map((order: any) => ({
+            id: order.id,
+            customerName: order.customerFirstName || 'Customer',
+            itemCount: order.items?.length || 0,
+            estimatedPayout: Number(order.estimatedPayout) || 0,
+            total: order.total,
+            deliveryAddress: order.deliveryAddress,
+            createdAt: order.createdAt,
+            urgency: getUrgencyFromDate(order.createdAt),
+            storeName: order.storeName || 'Store',
+            deliveryDistance: order.deliveryDistance || 0,
+            estimatedTime: order.estimatedTime || 30,
+            status: order.status || 'pending',
+            driverId: order.driverId,
+          }));
+          
+          // Check if any orders are active orders (assigned to this driver)
+          const activeOrdersList = formattedOrders.filter((order: any) => 
+            order.driverId && order.status !== 'delivered' && order.status !== 'cancelled'
+          );
+          const availableOrdersList = formattedOrders.filter((order: any) => 
+            !order.driverId && order.status === 'pending'
+          );
+          
+          // Set active order from the list if exists
+          if (activeOrdersList.length > 0) {
+            const activeOrderData = activeOrdersList[0];
+            setActiveOrder({
+              id: activeOrderData.id,
+              customerName: activeOrderData.customerName,
+              status: activeOrderData.status,
+              progress: 0, // Will be calculated if needed
+              totalItems: activeOrderData.itemCount,
+              estimatedPayout: activeOrderData.estimatedPayout,
+              deliveryAddress: activeOrderData.deliveryAddress,
+              timeElapsed: calculateTimeElapsed(activeOrderData.createdAt),
+            });
+            setAvailableOrders([]); // Don't show available orders when driver has active order
+          } else {
+            setActiveOrder(null);
+            setAvailableOrders(availableOrdersList);
+          }
         }
+      } else {
+        setAvailableOrders([]);
+        setActiveOrder(null);
       }
 
       // Fetch today's driver stats
@@ -109,6 +121,8 @@ export default function DriverDashboard() {
         const stats = statsResponse.data as any;
         setTodayEarnings(stats.totalEarnings || 0);
         setTodayDeliveries(stats.totalDeliveries || 0);
+        setTodayTips(stats.tips || 0);
+        setTodayBasePay(stats.basePay || 0);
       }
 
     } catch (err) {
@@ -123,6 +137,13 @@ export default function DriverDashboard() {
   useEffect(() => {
     fetchDriverData();
   }, []);
+
+  // Refresh data when online status changes
+  useEffect(() => {
+    if (user?.role === 'driver') {
+      fetchDriverData(false);
+    }
+  }, [isOnline]);
 
   // Refresh handler
   const onRefresh = async () => {
@@ -143,17 +164,40 @@ export default function DriverDashboard() {
   };
 
   const calculateProgress = (order: any): number => {
-    if (!order.items) return 0;
-    const foundItems = order.items.filter((item: any) => 
-      ['found', 'substituted'].includes(item.status)
+    if (!order.items || order.items.length === 0) return 0;
+    
+    // Count items that have been processed (found, substituted, or unavailable)
+    const processedItems = order.items.filter((item: any) => 
+      item.status && ['found', 'substituted', 'unavailable'].includes(item.status)
     ).length;
-    return Math.min(foundItems, order.items.length);
+    
+    return Math.min(processedItems, order.items.length);
+  };
+
+  const calculateTimeElapsed = (createdAt: string): number => {
+    const created = new Date(createdAt);
+    const now = new Date();
+    const minutesElapsed = Math.floor((now.getTime() - created.getTime()) / (1000 * 60));
+    return Math.max(0, minutesElapsed);
+  };
+
+  const handleToggleOnline = async () => {
+    try {
+      await toggleOnline();
+      // Data will be refreshed automatically by useEffect watching isOnline
+    } catch (error) {
+      Alert.alert('Error', 'Failed to change online status. Please try again.');
+    }
   };
 
   const handleAcceptOrder = async (orderId: string) => {
     try {
-      // For now, just navigate to the order. In real implementation,
-      // we'd call an API to assign the order to the driver
+      if (!isOnline) {
+        Alert.alert('Go Online', 'You must be online to accept orders.');
+        return;
+      }
+      // Use the new accept order API
+      await ordersAPI.acceptOrder(orderId);
       router.push(`/driver/order/${orderId}`);
     } catch (error) {
       Alert.alert('Error', 'Failed to accept order. Please try again.');
@@ -243,14 +287,28 @@ export default function DriverDashboard() {
           {/* Daily Summary */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Today's Summary</Text>
-            <View style={styles.summaryRow}>
+            <View style={styles.summaryGrid}>
               <View style={styles.summaryCard}>
-                <Text style={styles.summaryValue}>${todayEarnings.toFixed(2)}</Text>
-                <Text style={styles.summaryLabel}>Earnings</Text>
+                <Ionicons name="cash" size={24} color="#0F766E" />
+                <Text style={styles.summaryValue}>${todayBasePay.toFixed(2)}</Text>
+                <Text style={styles.summaryLabel}>Base Pay</Text>
               </View>
               <View style={styles.summaryCard}>
+                <Ionicons name="heart" size={24} color="#DC2626" />
+                <Text style={styles.summaryValue}>${todayTips.toFixed(2)}</Text>
+                <Text style={styles.summaryLabel}>Tips</Text>
+              </View>
+              <View style={styles.summaryCard}>
+                <Ionicons name="analytics" size={24} color="#7C3AED" />
+                <Text style={styles.summaryValue}>
+                  ${todayDeliveries > 0 ? (todayEarnings / todayDeliveries).toFixed(2) : '0.00'}
+                </Text>
+                <Text style={styles.summaryLabel}>Avg per Order</Text>
+              </View>
+              <View style={styles.summaryCard}>
+                <Ionicons name="bag" size={24} color="#EA580C" />
                 <Text style={styles.summaryValue}>{todayDeliveries}</Text>
-                <Text style={styles.summaryLabel}>Deliveries</Text>
+                <Text style={styles.summaryLabel}>Total Deliveries</Text>
               </View>
             </View>
           </View>
@@ -306,70 +364,94 @@ export default function DriverDashboard() {
             </View>
           )}
 
-          {/* Available Orders */}
+          {/* Available Work Summary - Only show when no active order */}
+          {!activeOrder && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Available Orders</Text>
-            {availableOrders.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Ionicons name="checkmark-circle" size={48} color="#6B7280" />
-                <Text style={styles.emptyStateText}>No orders available</Text>
-                <Text style={styles.emptyStateSubtext}>New orders will appear here</Text>
+            <Text style={styles.sectionTitle}>Available Work</Text>
+            {!isOnline ? (
+              <View style={styles.workSummaryCard}>
+                <View style={styles.emptyWorkState}>
+                  <Ionicons name="power" size={32} color="#6B7280" />
+                  <Text style={styles.emptyWorkText}>You're Offline</Text>
+                  <Text style={styles.emptyWorkSubtext}>Go online to see available orders</Text>
+                  <TouchableOpacity 
+                    style={styles.goOnlineButton}
+                    onPress={handleToggleOnline}
+                  >
+                    <Text style={styles.goOnlineButtonText}>Go Online</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : availableOrders.length === 0 ? (
+              <View style={styles.workSummaryCard}>
+                <View style={styles.emptyWorkState}>
+                  <Ionicons name="checkmark-circle" size={32} color="#6B7280" />
+                  <Text style={styles.emptyWorkText}>No orders available</Text>
+                  <Text style={styles.emptyWorkSubtext}>You're all caught up!</Text>
+                </View>
               </View>
             ) : (
-              availableOrders.map((order) => (
-                <View key={order.id} style={styles.orderCard}>
-                  <View style={styles.orderHeader}>
-                    <View style={styles.orderInfo}>
-                      <Text style={styles.orderId}>#{order.id}</Text>
-                      <Text style={styles.customerName}>{order.customerName}</Text>
-                    </View>
-                    <View style={styles.urgencyBadge}>
-                      <View 
-                        style={[
-                          styles.urgencyDot, 
-                          { backgroundColor: getUrgencyColor(order.urgency || 'Today') }
-                        ]} 
-                      />
-                      <Text style={styles.urgencyText}>{order.urgency || 'Today'}</Text>
-                    </View>
+              <View style={styles.workSummaryCard}>
+                <View style={styles.workStatsRow}>
+                  <View style={styles.workStat}>
+                    <Text style={styles.workStatValue}>{availableOrders.length}</Text>
+                    <Text style={styles.workStatLabel}>Orders Available</Text>
                   </View>
-
-                  <View style={styles.orderDetails}>
-                    <View style={styles.detailRow}>
-                      <Ionicons name="list" size={16} color="#6B7280" />
-                      <Text style={styles.detailText}>{order.itemCount} items</Text>
-                    </View>
-                    <View style={styles.detailRow}>
-                      <Ionicons name="storefront" size={16} color="#6B7280" />
-                      <Text style={styles.detailText}>{order.storeName}</Text>
-                    </View>
-                    <View style={styles.detailRow}>
-                      <Ionicons name="location" size={16} color="#6B7280" />
-                      <Text style={styles.detailText}>
-                        {order.storeDistance}mi to store, {order.deliveryDistance}mi to customer
-                      </Text>
-                    </View>
-                    <View style={styles.detailRow}>
-                      <Ionicons name="time" size={16} color="#6B7280" />
-                      <Text style={styles.detailText}>~{order.estimatedTime} minutes</Text>
-                    </View>
+                  <View style={styles.workStat}>
+                    <Text style={styles.workStatValue}>
+                      ${availableOrders.length > 0 ? Math.max(...availableOrders.map(o => o.estimatedPayout)).toFixed(2) : '0.00'}
+                    </Text>
+                    <Text style={styles.workStatLabel}>Best Payout</Text>
                   </View>
-
-                  <View style={styles.orderFooter}>
-                    <View style={styles.payoutInfo}>
-                      <Text style={styles.payoutLabel}>Estimated Payout</Text>
-                      <Text style={styles.payoutAmount}>${order.estimatedPayout.toFixed(2)}</Text>
-                    </View>
-                    <TouchableOpacity 
-                      style={styles.acceptButton}
-                      onPress={() => handleAcceptOrder(order.id)}
-                    >
-                      <Text style={styles.acceptButtonText}>Accept</Text>
-                    </TouchableOpacity>
+                  <View style={styles.workStat}>
+                    <Text style={styles.workStatValue}>
+                      {availableOrders.length > 0 ? 
+                        Math.round(availableOrders.reduce((acc, o) => acc + (o.deliveryDistance || 0), 0) / availableOrders.length * 10) / 10 : 0}mi
+                    </Text>
+                    <Text style={styles.workStatLabel}>Avg Distance</Text>
                   </View>
                 </View>
-              ))
+                <TouchableOpacity 
+                  style={styles.viewAllOrdersButton}
+                  onPress={() => router.push('/driver/(tabs)/orders')}
+                >
+                  <Text style={styles.viewAllOrdersText}>View All Orders</Text>
+                  <Ionicons name="arrow-forward" size={16} color="white" />
+                </TouchableOpacity>
+              </View>
             )}
+          </View>
+          )}
+
+          {/* Quick Actions */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Quick Actions</Text>
+            <View style={styles.quickActionsRow}>
+              <TouchableOpacity 
+                style={[styles.quickActionButton, isOnline && styles.quickActionButtonOnline]}
+                onPress={handleToggleOnline}
+              >
+                <Ionicons 
+                  name={isOnline ? "power" : "power"} 
+                  size={24} 
+                  color={isOnline ? "#059669" : "#0F766E"} 
+                />
+                <Text style={[styles.quickActionText, isOnline && styles.quickActionTextOnline]}>
+                  {isOnline ? 'Go Offline' : 'Go Online'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.quickActionButton}
+                onPress={() => router.push('/driver/(tabs)/earnings')}
+              >
+                <Ionicons name="analytics" size={24} color="#0F766E" />
+                <Text style={styles.quickActionText}>Earnings</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.quickActionButton}>
+                <Ionicons name="help-circle" size={24} color="#0F766E" />
+                <Text style={styles.quickActionText}>Support</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Bottom Spacing for tabs */}
@@ -417,15 +499,16 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingHorizontal: 20,
   },
-  summaryRow: {
+  summaryGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     paddingHorizontal: 20,
     gap: 12,
   },
   summaryCard: {
-    flex: 1,
+    width: '48%',
     backgroundColor: 'white',
-    padding: 20,
+    padding: 16,
     borderRadius: 16,
     alignItems: 'center',
     shadowColor: '#000',
@@ -433,6 +516,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
+    marginBottom: 12,
   },
   summaryValue: {
     fontSize: 28,
@@ -536,10 +620,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
   },
-  orderCard: {
+  // Available Work Summary Styles
+  workSummaryCard: {
     backgroundColor: 'white',
     marginHorizontal: 20,
-    marginBottom: 16,
     padding: 20,
     borderRadius: 16,
     shadowColor: '#000',
@@ -548,98 +632,98 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  orderHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  emptyWorkState: {
     alignItems: 'center',
-    marginBottom: 16,
+    paddingVertical: 20,
   },
-  orderInfo: {
-    flex: 1,
-  },
-  orderId: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 2,
-  },
-  customerName: {
-    fontSize: 18,
+  emptyWorkText: {
+    fontSize: 16,
     fontWeight: '600',
     color: '#1F2937',
+    marginTop: 8,
   },
-  urgencyBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  urgencyDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  urgencyText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  orderDetails: {
-    marginBottom: 16,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-    gap: 8,
-  },
-  detailText: {
+  emptyWorkSubtext: {
     fontSize: 14,
     color: '#6B7280',
-    flex: 1,
+    marginTop: 4,
   },
-  orderFooter: {
+  workStatsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    marginBottom: 20,
   },
-  payoutInfo: {
+  workStat: {
+    alignItems: 'center',
     flex: 1,
   },
-  payoutLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginBottom: 2,
-  },
-  payoutAmount: {
-    fontSize: 18,
+  workStatValue: {
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#0F766E',
+    marginBottom: 4,
   },
-  acceptButton: {
+  workStatLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  viewAllOrdersButton: {
     backgroundColor: '#0F766E',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
     borderRadius: 12,
+    gap: 8,
   },
-  acceptButtonText: {
+  viewAllOrdersText: {
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
   },
-  emptyState: {
+  // Quick Actions Styles
+  quickActionsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  quickActionButton: {
+    flex: 1,
+    backgroundColor: 'white',
     alignItems: 'center',
-    padding: 40,
-    marginHorizontal: 20,
+    paddingVertical: 16,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  emptyStateText: {
-    fontSize: 18,
+  quickActionText: {
+    fontSize: 12,
     fontWeight: '600',
-    color: '#1F2937',
-    marginTop: 12,
+    color: '#0F766E',
+    marginTop: 6,
   },
-  emptyStateSubtext: {
+  quickActionButtonOnline: {
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#059669',
+  },
+  quickActionTextOnline: {
+    color: '#059669',
+  },
+  goOnlineButton: {
+    backgroundColor: '#0F766E',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 16,
+  },
+  goOnlineButtonText: {
+    color: 'white',
     fontSize: 14,
-    color: '#6B7280',
-    marginTop: 4,
+    fontWeight: '600',
   },
   bottomSpacing: {
     height: 100, // Increased for new tab height

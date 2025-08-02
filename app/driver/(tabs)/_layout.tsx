@@ -5,9 +5,11 @@ import { View, Text } from 'react-native';
 import { TabBarIcon } from '../../../components/navigation/TabBarIcon';
 import Colors from '../../../constants/Colors';
 import { useColorScheme } from '../../../components/useColorScheme';
+import { useAuth } from '../../../context/AuthContext';
 
 export default function DriverTabLayout() {
   const colorScheme = useColorScheme();
+  const { isOnline } = useAuth();
 
   return (
     <Tabs
@@ -68,7 +70,22 @@ export default function DriverTabLayout() {
         options={{
           title: 'Profile',
           tabBarIcon: ({ color, focused }) => (
-            <TabBarIcon name={focused ? 'person' : 'person-outline'} color={color} />
+            <View style={{ position: 'relative' }}>
+              <TabBarIcon name={focused ? 'person' : 'person-outline'} color={color} />
+              {isOnline && (
+                <View style={{
+                  position: 'absolute',
+                  top: 0,
+                  right: 0,
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: '#059669',
+                  borderWidth: 1,
+                  borderColor: '#FFFFFF',
+                }} />
+              )}
+            </View>
           ),
         }}
       />

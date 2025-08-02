@@ -9,8 +9,10 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 
 import { useAuth } from '../../../context/AuthContext';
 import { adminAPI } from '../../../services/api';
@@ -99,6 +101,30 @@ export default function AdminDashboard() {
   // Use real activity data from backend
   const recentActivity = dashboardData?.recent_activity || [];
 
+  // Calculate notifications count (pending orders + low stock products)
+  const notificationCount = dashboardData ? 
+    (dashboardData.stats.pending_orders + dashboardData.stats.low_stock_products) : 0;
+
+  // Navigation handlers
+  const handleQuickAction = (action: string) => {
+    switch (action) {
+      case 'Add Product':
+        router.push('/admin/(tabs)/inventory');
+        break;
+      case 'Manage Orders':
+        router.push('/admin/(tabs)/orders');
+        break;
+      case 'View Reports':
+        Alert.alert('Reports', 'Reports feature coming soon!');
+        break;
+      case 'User Support':
+        router.push('/admin/(tabs)/users');
+        break;
+      default:
+        break;
+    }
+  };
+
   const quickActions = [
     { title: 'Add Product', icon: 'add-circle-outline', color: '#0F766E' },
     { title: 'Manage Orders', icon: 'receipt-outline', color: '#DC2626' },
@@ -145,9 +171,11 @@ export default function AdminDashboard() {
             </View>
             <View style={styles.notificationButton}>
               <Ionicons name="notifications-outline" size={24} color="#6B7280" />
-              <View style={styles.notificationBadge}>
-                <Text style={styles.badgeText}>3</Text>
-              </View>
+              {notificationCount > 0 && (
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.badgeText}>{notificationCount}</Text>
+                </View>
+              )}
             </View>
           </View>
 
@@ -172,7 +200,11 @@ export default function AdminDashboard() {
             <Text style={styles.sectionTitle}>Quick Actions</Text>
             <View style={styles.actionsGrid}>
               {quickActions.map((action, index) => (
-                <TouchableOpacity key={index} style={styles.actionCard}>
+                <TouchableOpacity 
+                  key={index} 
+                  style={styles.actionCard}
+                  onPress={() => handleQuickAction(action.title)}
+                >
                   <View style={[styles.actionIcon, { backgroundColor: `${action.color}15` }]}>
                     <Ionicons name={action.icon as any} size={20} color={action.color} />
                   </View>

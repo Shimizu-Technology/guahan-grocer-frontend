@@ -3,6 +3,26 @@ export interface User {
   email: string;
   role: 'customer' | 'driver' | 'admin';
   name: string;
+  phone?: string;
+  isOnline?: boolean;
+  createdAt?: string;
+}
+
+export interface Address {
+  id: string;
+  label?: string;
+  displayLabel: string;
+  streetAddress: string;
+  apartmentUnit?: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  isDefault: boolean;
+  fullAddress: string;
+  latitude?: number;
+  longitude?: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Item {
@@ -63,4 +83,49 @@ export interface SMSMessage {
   message: string;
   status: 'sent' | 'delivered' | 'failed';
   sentAt: Date;
+}
+
+export interface Vehicle {
+  id: string;
+  userId: string;
+  make: string;
+  model: string;
+  year: number;
+  color: string;
+  licensePlate: string;
+  vehicleType: VehicleType;
+  verificationStatus: VerificationStatus;
+  displayName: string;
+  fullDescription: string;
+  needsVerification: boolean;
+  canBeUsedForDelivery: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type VehicleType = 
+  | 'sedan' 
+  | 'suv' 
+  | 'truck' 
+  | 'hatchback' 
+  | 'coupe' 
+  | 'convertible' 
+  | 'van' 
+  | 'minivan' 
+  | 'pickup' 
+  | 'other';
+
+export type VerificationStatus = 
+  | 'pending' 
+  | 'verified' 
+  | 'rejected' 
+  | 'under_review';
+
+export interface VehicleFormData {
+  make: string;
+  model: string;
+  year: number;
+  color: string;
+  licensePlate: string;
+  vehicleType: VehicleType;
 } 

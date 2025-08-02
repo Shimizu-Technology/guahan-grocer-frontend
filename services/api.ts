@@ -66,7 +66,7 @@ class ApiService {
         ...options,
         headers: { ...headers, ...options.headers },
       });
-
+      
       return this.handleResponse<T>(response);
     } catch (error) {
       console.error('API Request Error:', error);
@@ -202,6 +202,10 @@ export const authAPI = {
   
   logout: () => 
     apiService.delete('/auth/logout'),
+
+  // Online status endpoints  
+  toggleOnline: () =>
+    apiService.put('/auth/toggle_online'),
 };
 
 export const productsAPI = {
@@ -246,6 +250,9 @@ export const ordersAPI = {
   getAvailable: () =>
     apiService.get('/orders/available'),
   
+  getActive: () =>
+    apiService.get('/orders/active'),
+  
   create: (orderData: any) => 
     apiService.post('/orders', orderData),
   
@@ -255,8 +262,36 @@ export const ordersAPI = {
   assignDriver: (id: string, driverId: string) =>
     apiService.put(`/orders/${id}/assign_driver`, { driver_id: driverId }),
   
+  acceptOrder: (id: string) =>
+    apiService.put(`/orders/${id}/accept`),
+  
+  uploadReceipt: async (id: string, receiptUri: string) => {
+    const formData = new FormData();
+    formData.append('receipt', {
+      uri: receiptUri,
+      type: 'image/jpeg',
+      name: 'receipt.jpg',
+    } as any);
+    return apiService.postFormData(`/orders/${id}/receipt`, formData);
+  },
+  
   calculateDeliveryFee: (deliveryAddress: any) =>
     apiService.post('/orders/calculate_delivery_fee', { delivery_address: deliveryAddress }),
+};
+
+export const orderItemsAPI = {
+  updateFoundQuantity: (id: string, foundQuantity: number, notes?: string) =>
+    apiService.put(`/order_items/${id}/found_quantity`, { found_quantity: foundQuantity, notes }),
+  
+  updateStatus: (id: string, status: string) =>
+    apiService.put(`/order_items/${id}/status`, { status }),
+  
+  substitute: (id: string, substituteProductId: string, foundQuantity?: number, notes?: string) =>
+    apiService.put(`/order_items/${id}/substitute`, { 
+      substitute_product_id: substituteProductId, 
+      found_quantity: foundQuantity,
+      notes 
+    }),
 };
 
 export const driverStatsAPI = {
@@ -310,6 +345,34 @@ export const unitsAPI = {
     apiService.delete(`/units/${id}`),
 };
 
+export const usersAPI = {
+  getById: (id: string) => 
+    apiService.get(`/users/${id}`),
+  
+  update: (id: string, userData: any) => 
+    apiService.put(`/users/${id}`, { user: userData }),
+};
+
+export const addressesAPI = {
+  getAll: () => 
+    apiService.get('/addresses'),
+  
+  getById: (id: string) => 
+    apiService.get(`/addresses/${id}`),
+  
+  create: (addressData: any) => 
+    apiService.post('/addresses', { address: addressData }),
+  
+  update: (id: string, addressData: any) => 
+    apiService.put(`/addresses/${id}`, { address: addressData }),
+  
+  delete: (id: string) => 
+    apiService.delete(`/addresses/${id}`),
+    
+  makeDefault: (id: string) => 
+    apiService.put(`/addresses/${id}/make_default`),
+};
+
 export const storesAPI = {
   getAll: () => 
     apiService.get('/stores'),
@@ -328,6 +391,33 @@ export const storesAPI = {
     
   toggleActive: (id: string) => 
     apiService.put(`/stores/${id}/toggle_active`),
+};
+
+// Helper function to transform camelCase to snake_case for vehicle data
+const transformVehicleData = (data: any) => ({
+  make: data.make,
+  model: data.model,
+  year: data.year,
+  color: data.color,
+  license_plate: data.licensePlate,
+  vehicle_type: data.vehicleType,
+});
+
+export const vehiclesAPI = {
+  get: () => 
+    apiService.get('/vehicles'),
+  
+  getById: (id: string) => 
+    apiService.get(`/vehicles/${id}`),
+  
+  create: (vehicleData: any) => 
+    apiService.post('/vehicles', { vehicle: transformVehicleData(vehicleData) }),
+  
+  update: (id: string, vehicleData: any) => 
+    apiService.put(`/vehicles/${id}`, { vehicle: transformVehicleData(vehicleData) }),
+  
+  delete: (id: string) => 
+    apiService.delete(`/vehicles/${id}`),
 };
 
 export default apiService; 

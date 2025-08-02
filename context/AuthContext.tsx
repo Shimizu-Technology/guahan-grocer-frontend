@@ -9,7 +9,11 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string, phone: string) => Promise<void>;
   logout: () => Promise<void>;
+  updateUser: (userData: User) => void;
   isLoading: boolean;
+  // Online status functions
+  isOnline: boolean;
+  toggleOnline: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -26,6 +30,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isOnline, setIsOnline] = useState(false);
 
   useEffect(() => {
     loadStoredAuth();
@@ -41,8 +46,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const response = await authAPI.getCurrentUser();
           if (response.data && (response.data as any).user) {
-            setUser((response.data as any).user);
+            const userData = (response.data as any).user;
+            setUser(userData);
             setToken(storedToken);
+            setIsOnline(userData.isOnline || false);
           } else {
             // Token is invalid, remove it
             console.error('Token validation failed: Invalid response from server');
@@ -66,6 +73,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await AsyncStorage.removeItem('token');
       setUser(null);
       setToken(null);
+      setIsOnline(false);
     } catch (error) {
       console.error('Error clearing auth data:', error);
     }
@@ -82,6 +90,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await AsyncStorage.setItem('token', newToken);
           setUser(userData);
           setToken(newToken);
+          setIsOnline(userData.isOnline || false);
         } else {
           throw new Error('Login response missing token or user data');
         }
@@ -129,9 +138,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updateUser = (userData: User) => {
+    setUser(userData);
+    setIsOnline(userData.isOnline || false);
+  };
+
+  // Online status functions
+  const toggleOnline = async () => {
+    try {
+      const response = await authAPI.toggleOnline();
+      if (response.data && (response.data as any).user) {
+        const userData = (response.data as any).user;
+        setUser(userData);
+        setIsOnline(userData.isOnline || false);
+      }
+    } catch (error) {
+      console.error('Toggle online error:', error);
+      throw error;
+    }
+  };
+
+  const value = {
+    user, 
+    token, 
+    login, 
+    register, 
+    logout, 
+    updateUser, 
+    isLoading,
+    isOnline,
+    toggleOnline
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, isLoading }}>
-      {!isLoading && children}
+    <AuthContext.Provider value={value}>
+      {children}
     </AuthContext.Provider>
   );
 }; 

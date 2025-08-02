@@ -16,8 +16,9 @@ import { router, Stack } from 'expo-router';
 
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
-import { ordersAPI } from '../services/api';
+import { ordersAPI, addressesAPI } from '../services/api';
 import { locationService, LocationResult } from '../services/locationService';
+import { Address } from '../types';
 
 export default function CheckoutScreen() {
   const { items, total, clearCart } = useCart();
@@ -26,7 +27,7 @@ export default function CheckoutScreen() {
   // Address Form State
   const [streetAddress, setStreetAddress] = useState('');
   const [apartmentUnit, setApartmentUnit] = useState('');
-  const [city, setCity] = useState('Tamuning');
+  const [city, setCity] = useState('');
   const [state, setState] = useState('GU');
   const [zipCode, setZipCode] = useState('');
   
@@ -34,8 +35,27 @@ export default function CheckoutScreen() {
   const [deliveryWindow, setDeliveryWindow] = useState('ASAP');
   const [deliveryInstructions, setDeliveryInstructions] = useState('');
   
-  // Payment Method
-  const [paymentMethod, setPaymentMethod] = useState('card');
+  // Card Information (placeholders for Stripe integration)
+  const [cardNumber, setCardNumber] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
+  const [cvv, setCvv] = useState('');
+  const [cardholderName, setCardholderName] = useState('');
+
+  // Format card number with spaces
+  const formatCardNumber = (text: string) => {
+    const cleaned = text.replace(/\D/g, '');
+    const formatted = cleaned.replace(/(\d{4})(?=\d)/g, '$1 ');
+    return formatted;
+  };
+
+  // Format expiry date with slash
+  const formatExpiryDate = (text: string) => {
+    const cleaned = text.replace(/\D/g, '');
+    if (cleaned.length >= 2) {
+      return `${cleaned.slice(0, 2)}/${cleaned.slice(2, 4)}`;
+    }
+    return cleaned;
+  };
   
   // Tip
   const [tipPercentage, setTipPercentage] = useState(15); // Default 15%
@@ -56,6 +76,87 @@ export default function CheckoutScreen() {
   
   // Location Services
   const [isGettingLocation, setIsGettingLocation] = useState(false);
+  
+  // Address Management
+  const [userAddresses, setUserAddresses] = useState<Address[]>([]);
+  const [isLoadingAddresses, setIsLoadingAddresses] = useState(true);
+  const [defaultAddress, setDefaultAddress] = useState<Address | null>(null);
+  const [isUsingDefaultAddress, setIsUsingDefaultAddress] = useState(false);
+
+  // Fetch user's addresses and pre-populate default address
+  useEffect(() => {
+    const fetchUserAddresses = async () => {
+      if (!user) {
+        setIsLoadingAddresses(false);
+        return;
+      }
+
+      try {
+        const response = await addressesAPI.getAll();
+        
+        if (response.data) {
+          const addresses = response.data as Address[];
+          setUserAddresses(addresses);
+          
+          // Find the default address
+          const defaultAddr = addresses.find(addr => addr.isDefault);
+          if (defaultAddr) {
+            setDefaultAddress(defaultAddr);
+            
+            // Pre-populate form fields with default address
+            setStreetAddress(defaultAddr.streetAddress || '');
+            setApartmentUnit(defaultAddr.apartmentUnit || '');
+            setCity(defaultAddr.city || '');
+            setState(defaultAddr.state || 'GU');
+            setZipCode(defaultAddr.zipCode || '');
+            setIsUsingDefaultAddress(true);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch user addresses:', error);
+      } finally {
+        setIsLoadingAddresses(false);
+      }
+    };
+
+    fetchUserAddresses();
+  }, [user]);
+
+  // Address field change handlers that track manual modifications
+  const handleStreetAddressChange = (value: string) => {
+    setStreetAddress(value);
+    if (isUsingDefaultAddress && defaultAddress && value !== defaultAddress.streetAddress) {
+      setIsUsingDefaultAddress(false);
+    }
+  };
+
+  const handleApartmentUnitChange = (value: string) => {
+    setApartmentUnit(value);
+    if (isUsingDefaultAddress && defaultAddress && value !== (defaultAddress.apartmentUnit || '')) {
+      setIsUsingDefaultAddress(false);
+    }
+  };
+
+  const handleCityChange = (value: string) => {
+    setCity(value);
+    if (isUsingDefaultAddress && defaultAddress && value !== defaultAddress.city) {
+      setIsUsingDefaultAddress(false);
+    }
+  };
+
+  const handleStateChange = (value: string) => {
+    setState(value);
+    if (isUsingDefaultAddress && defaultAddress && value !== defaultAddress.state) {
+      setIsUsingDefaultAddress(false);
+    }
+  };
+
+  const handleZipCodeChange = (value: string) => {
+    setZipCode(value);
+    if (isUsingDefaultAddress && defaultAddress && value !== defaultAddress.zipCode) {
+      setIsUsingDefaultAddress(false);
+    }
+  };
 
   // Calculate delivery fee based on address
   const calculateDeliveryFee = async () => {
@@ -145,6 +246,9 @@ export default function CheckoutScreen() {
         setState(result.address.state);
         setZipCode(result.address.zipCode);
         
+        // Since this is manual location input, not using default address
+        setIsUsingDefaultAddress(false);
+        
         // Show success message with shorter text
         Alert.alert(
           'Location Found!',
@@ -183,9 +287,7 @@ export default function CheckoutScreen() {
     { id: 'tomorrow-afternoon', label: 'Tomorrow Afternoon (2-4 PM)', price: 0 },
   ];
 
-  const paymentMethods = [
-    { id: 'card', label: 'Credit/Debit Card', icon: 'card' },
-  ];
+
 
 
   
@@ -198,11 +300,15 @@ export default function CheckoutScreen() {
   const shouldShowDeliveryFee = streetAddress || deliveryFeeLoading || distanceDetails;
   const finalTotal = total + (shouldShowDeliveryFee ? deliveryFee : 0) + tipAmount;
 
-  const isFormValid = streetAddress && city && zipCode && !deliveryFeeLoading;
+  const isFormValid = streetAddress && city && zipCode && cardholderName && 
+                      cardNumber.replace(/\s/g, '').length >= 3 && 
+                      expiryDate.length >= 3 && 
+                      cvv.length >= 1 && 
+                      !deliveryFeeLoading;
 
   const handlePlaceOrder = async () => {
     if (!isFormValid) {
-      Alert.alert('Missing Information', 'Please fill in all required address fields.');
+      Alert.alert('Missing Information', 'Please fill in all required address and payment fields.');
       return;
     }
 
@@ -212,7 +318,9 @@ export default function CheckoutScreen() {
       // Prepare order data
       const orderData = {
         order: {
-          total: finalTotal,
+          subtotal: total, // Items cost only
+          delivery_fee: shouldShowDeliveryFee ? deliveryFee : 0,
+          total: finalTotal, // Grand total (subtotal + delivery + tip)
           tip_amount: tipAmount,
           tip_percentage: tipOption === 'percentage' ? tipPercentage : 0,
           delivery_address: {
@@ -223,9 +331,8 @@ export default function CheckoutScreen() {
             zipCode
           },
           eta: 45, // Default 45 minutes
-          delivery_fee: shouldShowDeliveryFee ? deliveryFee : 0,
-          closest_store: closestStore,
-          distance_details: distanceDetails
+          delivery_time: deliveryWindow,
+          delivery_instructions: deliveryInstructions
         },
         items: items.map(item => ({
           itemId: item.item.id,
@@ -238,20 +345,30 @@ export default function CheckoutScreen() {
       const response = await ordersAPI.create(orderData);
       
       if (response.data) {
-        // Clear cart and navigate to success
-        clearCart();
-        
         const orderData = response.data as any;
-        Alert.alert(
-          'Order Placed Successfully!',
-          `Order #${orderData.id || 'NEW'} has been placed. You'll receive updates via SMS.`,
-          [
-            {
-              text: 'Continue Shopping',
-              onPress: () => router.replace('/(tabs)')
+        
+        console.log('✅ Order created successfully:', orderData);
+        console.log('📍 Navigating to confirmation with:', {
+          orderId: orderData.id || 'NEW',
+          orderTotal: finalTotal.toFixed(2)
+        });
+        
+        // Navigate immediately to confirmation screen
+        // Cart will be cleared from the confirmation screen to avoid React warnings
+        try {
+          router.replace({
+            pathname: '/order-confirmation',
+            params: {
+              orderId: orderData.id || 'NEW',
+              orderTotal: finalTotal.toFixed(2)
             }
-          ]
-        );
+          });
+          console.log('📱 Navigation completed');
+        } catch (navError) {
+          console.error('❌ Navigation failed:', navError);
+          // Fallback to simple navigation
+          router.replace('/order-confirmation');
+        }
       } else {
         throw new Error('Failed to create order');
       }
@@ -299,26 +416,129 @@ export default function CheckoutScreen() {
 
         {/* Delivery Address */}
         <View style={styles.section}>
-          <View style={styles.addressHeaderContainer}>
+          {/* Main Header Row */}
+          <View style={styles.addressMainHeaderContainer}>
             <Text style={[styles.sectionTitle, styles.sectionTitleInline]}>Delivery Address</Text>
-            <TouchableOpacity
-              style={[
-                styles.locationButton,
-                isGettingLocation && styles.locationButtonDisabled
-              ]}
-              onPress={handleUseCurrentLocation}
-              disabled={isGettingLocation}
-            >
-              {isGettingLocation ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Ionicons name="location" size={14} color="#FFFFFF" />
+            <View style={styles.primaryActionButtons}>
+              {isLoadingAddresses && (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="small" color="#0F766E" />
+                  <Text style={styles.loadingText}>Loading...</Text>
+                </View>
               )}
-              <Text style={styles.locationButtonText}>
-                {isGettingLocation ? 'Finding...' : 'Use Location'}
-              </Text>
-            </TouchableOpacity>
+              {!isLoadingAddresses && (
+                <>
+                  {userAddresses.length > 1 && (
+                    <TouchableOpacity
+                      style={styles.changeAddressButton}
+                      onPress={() => {
+                        Alert.alert(
+                          'Select Address',
+                          'Choose which address to use for this order:',
+                          [
+                            ...userAddresses.map((addr) => ({
+                              text: `${addr.displayLabel}: ${addr.streetAddress}`,
+                              onPress: () => {
+                                setStreetAddress(addr.streetAddress || '');
+                                setApartmentUnit(addr.apartmentUnit || '');
+                                setCity(addr.city || '');
+                                setState(addr.state || 'GU');
+                                setZipCode(addr.zipCode || '');
+                                setDefaultAddress(addr);
+                                setIsUsingDefaultAddress(true);
+                              }
+                            })),
+                            { text: 'Cancel', style: 'cancel' }
+                          ]
+                        );
+                      }}
+                    >
+                      <Ionicons name="swap-horizontal" size={12} color="#0F766E" />
+                      <Text style={styles.changeAddressText}>Change</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={[
+                      styles.locationButton,
+                      isGettingLocation && styles.locationButtonDisabled
+                    ]}
+                    onPress={handleUseCurrentLocation}
+                    disabled={isGettingLocation}
+                  >
+                    {isGettingLocation ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Ionicons name="location" size={14} color="#FFFFFF" />
+                    )}
+                    <Text style={styles.locationButtonText}>
+                      {isGettingLocation ? 'Finding...' : 'Use Location'}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
           </View>
+
+          {/* Status and Utility Buttons Row */}
+          {!isLoadingAddresses && (
+            <View style={styles.addressStatusContainer}>
+              <View style={styles.statusBadgesContainer}>
+                {defaultAddress && isUsingDefaultAddress && (
+                  <View style={styles.defaultAddressBadge}>
+                    <Ionicons name="checkmark-circle" size={12} color="#059669" />
+                    <Text style={styles.defaultAddressText}>Default</Text>
+                  </View>
+                )}
+              </View>
+              <View style={styles.utilityButtonsContainer}>
+                {defaultAddress && !isUsingDefaultAddress && (
+                  <TouchableOpacity
+                    style={styles.useDefaultButton}
+                    onPress={() => {
+                      setStreetAddress(defaultAddress.streetAddress || '');
+                      setApartmentUnit(defaultAddress.apartmentUnit || '');
+                      setCity(defaultAddress.city || '');
+                      setState(defaultAddress.state || 'GU');
+                      setZipCode(defaultAddress.zipCode || '');
+                      setIsUsingDefaultAddress(true);
+                    }}
+                  >
+                    <Ionicons name="home" size={12} color="#0F766E" />
+                    <Text style={styles.useDefaultText}>Use Default</Text>
+                  </TouchableOpacity>
+                )}
+                {(streetAddress || city || zipCode) && (
+                  <TouchableOpacity
+                    style={styles.clearAddressButton}
+                    onPress={() => {
+                      Alert.alert(
+                        'Clear Address',
+                        'Are you sure you want to clear all address fields?',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Clear',
+                            style: 'destructive',
+                            onPress: () => {
+                              setStreetAddress('');
+                              setApartmentUnit('');
+                              setCity('');
+                              setState('GU');
+                              setZipCode('');
+                              setIsUsingDefaultAddress(false);
+                            }
+                          }
+                        ]
+                      );
+                    }}
+                  >
+                    <Ionicons name="close-circle" size={12} color="#DC2626" />
+                    <Text style={styles.clearAddressText}>Clear</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          )}
           <View style={styles.formCard}>
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Street Address *</Text>
@@ -326,7 +546,7 @@ export default function CheckoutScreen() {
                 style={styles.input}
                 placeholder="123 Main Street"
                 value={streetAddress}
-                onChangeText={setStreetAddress}
+                onChangeText={handleStreetAddressChange}
                 autoCapitalize="words"
               />
             </View>
@@ -337,7 +557,7 @@ export default function CheckoutScreen() {
                 style={styles.input}
                 placeholder="Apt 2B, Unit 101, etc."
                 value={apartmentUnit}
-                onChangeText={setApartmentUnit}
+                onChangeText={handleApartmentUnitChange}
                 autoCapitalize="words"
               />
             </View>
@@ -349,7 +569,7 @@ export default function CheckoutScreen() {
                   style={styles.input}
                   placeholder="Tamuning"
                   value={city}
-                  onChangeText={setCity}
+                  onChangeText={handleCityChange}
                   autoCapitalize="words"
                 />
               </View>
@@ -360,7 +580,7 @@ export default function CheckoutScreen() {
                   style={styles.input}
                   placeholder="GU"
                   value={state}
-                  onChangeText={setState}
+                  onChangeText={handleStateChange}
                   autoCapitalize="characters"
                   maxLength={2}
                 />
@@ -373,7 +593,7 @@ export default function CheckoutScreen() {
                 style={styles.input}
                 placeholder="96913"
                 value={zipCode}
-                onChangeText={setZipCode}
+                onChangeText={handleZipCodeChange}
                 keyboardType="numeric"
                 maxLength={5}
               />
@@ -434,42 +654,59 @@ export default function CheckoutScreen() {
           </View>
         </View>
 
-        {/* Payment Method */}
+        {/* Payment Information */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Payment Method</Text>
-          <View style={styles.optionsCard}>
-            {paymentMethods.map((method) => (
-              <TouchableOpacity
-                key={method.id}
-                style={[
-                  styles.optionItem,
-                  paymentMethod === method.id && styles.optionItemSelected
-                ]}
-                onPress={() => setPaymentMethod(method.id)}
-              >
-                <View style={styles.paymentMethodContent}>
-                  <Ionicons 
-                    name={method.icon as any} 
-                    size={24} 
-                    color={paymentMethod === method.id ? '#0F766E' : '#6B7280'} 
-                  />
-                  <Text style={[
-                    styles.optionLabel,
-                    paymentMethod === method.id && styles.optionLabelSelected
-                  ]}>
-                    {method.label}
-                  </Text>
-                </View>
-                <View style={[
-                  styles.radioButton,
-                  paymentMethod === method.id && styles.radioButtonSelected
-                ]}>
-                  {paymentMethod === method.id && (
-                    <View style={styles.radioButtonInner} />
-                  )}
-                </View>
-              </TouchableOpacity>
-            ))}
+          <Text style={styles.sectionTitle}>Payment Information</Text>
+          <View style={styles.formCard}>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Cardholder Name *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="John Doe"
+                value={cardholderName}
+                onChangeText={setCardholderName}
+                autoCapitalize="words"
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Card Number *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="1234 5678 9012 3456"
+                value={cardNumber}
+                onChangeText={(text) => setCardNumber(formatCardNumber(text))}
+                keyboardType="numeric"
+                maxLength={19}
+              />
+            </View>
+
+            <View style={styles.inputRow}>
+              <View style={styles.inputGroupFlex}>
+                <Text style={styles.inputLabel}>Expiry Date *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="MM/YY"
+                  value={expiryDate}
+                  onChangeText={(text) => setExpiryDate(formatExpiryDate(text))}
+                  keyboardType="numeric"
+                  maxLength={5}
+                />
+              </View>
+
+              <View style={styles.inputGroupSmall}>
+                <Text style={styles.inputLabel}>CVV *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="123"
+                  value={cvv}
+                  onChangeText={(text) => setCvv(text.replace(/\D/g, ''))}
+                  keyboardType="numeric"
+                  maxLength={4}
+                  secureTextEntry
+                />
+              </View>
+            </View>
           </View>
         </View>
 
@@ -576,7 +813,7 @@ export default function CheckoutScreen() {
             {shouldShowDeliveryFee && (
               <View style={styles.totalRow}>
                 <View style={styles.deliveryFeeContainer}>
-                  <Text style={styles.totalLabel}>Delivery Fee</Text>
+                  <Text style={styles.totalLabel}>Delivery Fee (estimated)</Text>
                   {deliveryFeeLoading && (
                     <Text style={styles.deliveryFeeSubtext}>Calculating...</Text>
                   )}
@@ -590,6 +827,7 @@ export default function CheckoutScreen() {
                       From closest store
                     </Text>
                   )}
+
                 </View>
                 <View style={styles.deliveryFeeAmountContainer}>
                   {deliveryFeeLoading ? (
@@ -652,6 +890,7 @@ export default function CheckoutScreen() {
               <Text style={styles.finalTotalLabel}>Total</Text>
               <Text style={styles.finalTotalAmount}>${finalTotal.toFixed(2)}</Text>
             </View>
+
           </View>
         </View>
 
@@ -672,6 +911,7 @@ export default function CheckoutScreen() {
           <Text style={styles.placeOrderButtonText}>
             {isProcessing ? 'Processing...' : 
              deliveryFeeLoading ? 'Calculating delivery...' :
+             !isFormValid ? 'Complete all fields' :
              `Place Order • $${finalTotal.toFixed(2)}`}
           </Text>
         </TouchableOpacity>
@@ -839,12 +1079,7 @@ const styles = StyleSheet.create({
   optionItemSelected: {
     backgroundColor: '#F0FDFA',
   },
-  paymentMethodContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-  },
+
   radioButton: {
     width: 20,
     height: 20,
@@ -903,6 +1138,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#0F766E',
   },
+
   bottomSpacing: {
     height: 100,
   },
@@ -1033,6 +1269,7 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginTop: 2,
   },
+
   deliveryFeeAmountContainer: {
     alignItems: 'flex-end',
     justifyContent: 'center',
@@ -1134,13 +1371,108 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontStyle: 'italic',
   },
-  // Location Button Styles
-  addressHeaderContainer: {
+  // Address Header Styles
+  addressMainHeaderContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+    paddingHorizontal: 20,
+  },
+  primaryActionButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  addressStatusContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
     paddingHorizontal: 20,
+    minHeight: 24,
+  },
+  statusBadgesContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  utilityButtonsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  loadingText: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  defaultAddressBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#059669',
+  },
+  defaultAddressText: {
+    fontSize: 11,
+    color: '#059669',
+    fontWeight: '600',
+  },
+  useDefaultButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#0F766E',
+    backgroundColor: 'transparent',
+  },
+  useDefaultText: {
+    fontSize: 11,
+    color: '#0F766E',
+    fontWeight: '500',
+  },
+  changeAddressButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#0F766E',
+    backgroundColor: 'transparent',
+  },
+  changeAddressText: {
+    fontSize: 11,
+    color: '#0F766E',
+    fontWeight: '500',
+  },
+  clearAddressButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#DC2626',
+    backgroundColor: 'transparent',
+  },
+  clearAddressText: {
+    fontSize: 11,
+    color: '#DC2626',
+    fontWeight: '500',
   },
   locationButton: {
     flexDirection: 'row',

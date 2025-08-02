@@ -251,9 +251,11 @@ export default function CatalogScreen() {
       </TouchableOpacity>
 
       <View style={styles.itemInfo}>
-        <Text style={styles.itemName}>{item.name}</Text>
-        <Text style={styles.itemPrice}>${item.price.toFixed(2)}</Text>
-        <Text style={styles.itemUnit}>per {item.unit}</Text>
+        <View style={styles.itemTextContent}>
+          <Text style={styles.itemName} numberOfLines={2} ellipsizeMode="tail">{item.name}</Text>
+          <Text style={styles.itemPrice}>${item.price.toFixed(2)}</Text>
+          <Text style={styles.itemUnit}>per {item.unit}</Text>
+        </View>
         
         <TouchableOpacity
           style={styles.addButton}
@@ -326,6 +328,7 @@ export default function CatalogScreen() {
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
         numColumns={2}
+        columnWrapperStyle={styles.row}
         style={styles.productsListContainer}
         contentContainerStyle={styles.productsGrid}
         showsVerticalScrollIndicator={false}
@@ -556,15 +559,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   productsGrid: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
     paddingBottom: 20,
     flexGrow: 1,
   },
+  row: {
+    justifyContent: 'space-between',
+  },
   itemCard: {
-    flex: 1,
+    width: '47%',
+    height: 260,
     backgroundColor: 'white',
     borderRadius: 16,
-    margin: 8,
+    marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -592,13 +599,20 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   itemInfo: {
-    padding: 12,
+    flex: 1,
+    padding: 10,
+    justifyContent: 'space-between',
+  },
+  itemTextContent: {
+    flex: 1,
   },
   itemName: {
     fontSize: 14,
     fontWeight: '600',
     color: '#1F2937',
     marginBottom: 4,
+    height: 34,
+    lineHeight: 17,
   },
   itemPrice: {
     fontSize: 16,
@@ -608,7 +622,7 @@ const styles = StyleSheet.create({
   itemUnit: {
     fontSize: 12,
     color: '#6B7280',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   addButton: {
     flexDirection: 'row',
@@ -616,7 +630,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#0F766E',
     borderRadius: 8,
-    paddingVertical: 8,
+    paddingVertical: 6,
     gap: 4,
   },
   addButtonText: {

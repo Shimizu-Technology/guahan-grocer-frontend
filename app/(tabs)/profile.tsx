@@ -78,13 +78,13 @@ export default function ProfileScreen() {
       icon: 'person-outline',
       label: 'Edit Profile',
       subtitle: 'Update your personal information',
-      onPress: () => Alert.alert('Feature Coming Soon', 'Profile editing will be available soon!')
+      onPress: () => router.push('/edit-profile')
     },
     {
       icon: 'location-outline',
       label: 'Addresses',
       subtitle: 'Manage delivery addresses',
-      onPress: () => Alert.alert('Feature Coming Soon', 'Address management will be available soon!')
+      onPress: () => router.push('/addresses')
     },
     {
       icon: 'card-outline',
@@ -96,7 +96,7 @@ export default function ProfileScreen() {
       icon: 'receipt-outline',
       label: 'Order History',
       subtitle: 'View past orders',
-      onPress: () => Alert.alert('Feature Coming Soon', 'Order history will be available soon!')
+      onPress: () => router.push('/order-history')
     },
     {
       icon: 'notifications-outline',

@@ -39,13 +39,7 @@ export default function DriverLayout() {
           headerShown: false
         }} 
       />
-      <Stack.Screen 
-        name="dashboard" 
-        options={{ 
-          headerShown: false,
-          title: 'Driver Dashboard'
-        }} 
-      />
+
       <Stack.Screen 
         name="order/[id]" 
         options={{ 

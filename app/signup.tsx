@@ -18,16 +18,17 @@ export default function SignupScreen() {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    phone: '',
+    phone: '+1671',
     password: '',
     passwordConfirmation: ''
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [isNewSignup, setIsNewSignup] = useState(false);
   const { register, user } = useAuth();
 
-  // Redirect if already authenticated
+  // Redirect if already authenticated (but not during new signup process)
   React.useEffect(() => {
-    if (user) {
+    if (user && !isLoading && !isNewSignup) {
       const dashboardRoutes: Record<string, string> = {
         customer: '/(tabs)',
         driver: '/driver',
@@ -36,7 +37,7 @@ export default function SignupScreen() {
       const route = dashboardRoutes[user.role] || '/(tabs)';
       router.replace(route as any);
     }
-  }, [user]);
+  }, [user, isLoading, isNewSignup]);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({
@@ -69,6 +70,11 @@ export default function SignupScreen() {
       return false;
     }
 
+    if (phone.trim() === '+1671') {
+      Alert.alert('Error', 'Please complete your phone number');
+      return false;
+    }
+
     if (!password) {
       Alert.alert('Error', 'Please enter a password');
       return false;
@@ -95,20 +101,13 @@ export default function SignupScreen() {
     setIsLoading(true);
     try {
       const { name, email, phone, password } = formData;
+      setIsNewSignup(true);
       await register(email, password, name, phone);
       
-      Alert.alert(
-        'Account Created!',
-        'Your account has been created successfully. Welcome to Guahan Grocer!',
-        [
-          {
-            text: 'Get Started',
-            onPress: () => {
-              // Navigation will be handled by the useEffect above
-            }
-          }
-        ]
-      );
+      // Small delay to ensure user context is set
+      setTimeout(() => {
+        router.replace('/address-form');
+      }, 100);
     } catch (err: any) {
       console.error('Registration error:', err);
       
@@ -122,6 +121,7 @@ export default function SignupScreen() {
       }
       
       Alert.alert('Registration Failed', errorMessage);
+      setIsNewSignup(false); // Reset flag on error
     } finally {
       setIsLoading(false);
     }
@@ -136,11 +136,13 @@ export default function SignupScreen() {
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? -34 : 0}
       >
         <ScrollView 
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          bounces={false}
         >
           {/* Logo */}
           <View style={styles.logoContainer}>
@@ -183,11 +185,11 @@ export default function SignupScreen() {
             <View style={styles.inputContainer}>
               <TextInput
                 style={styles.input}
-                placeholder="Phone Number"
+                placeholder="+1671xxxxxxx"
                 placeholderTextColor="#9CA3AF"
                 value={formData.phone}
                 onChangeText={(value) => handleInputChange('phone', value)}
-                keyboardType="phone-pad"
+                keyboardType="numeric"
                 autoCorrect={false}
               />
             </View>
@@ -264,6 +266,7 @@ const styles = StyleSheet.create({
   },
   keyboardView: {
     flex: 1,
+    backgroundColor: '#0F766E',
   },
   scrollContent: {
     flexGrow: 1,
