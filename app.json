@@ -17,11 +17,21 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.guahangrocer.app",
+      "bundleIdentifier": "com.shimizutechnology.guahangrocer",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSLocationWhenInUseUsageDescription": "This app needs access to your location to calculate accurate delivery distances and fees.",
-        "NSCameraUsageDescription": "This app needs access to your camera to take photos of receipts during checkout."
+        "NSCameraUsageDescription": "This app needs access to your camera to take photos of receipts during checkout.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false,
+          "NSExceptionDomains": {
+            "onrender.com": {
+              "NSExceptionAllowsInsecureHTTPLoads": false,
+              "NSExceptionMinimumTLSVersion": "TLSv1.0",
+              "NSIncludesSubdomains": true
+            }
+          }
+        }
       }
     },
     "android": {
@@ -62,9 +72,7 @@
       }
     },
     "owner": "shimizutechnology",
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.0",
     "updates": {
       "url": "https://u.expo.dev/12feee7a-8a4a-4883-8801-5e3bd7287bed"
     }
