@@ -195,7 +195,7 @@ export const authAPI = {
     apiService.post('/auth/login', { email: email.toLowerCase().trim(), password }, false),
   
   register: (email: string, password: string, name: string, phone: string) => 
-    apiService.post('/auth/register', { user: { email: email.toLowerCase().trim(), password, name, phone } }, false),
+    apiService.post('/auth/register', { user: { email: email.toLowerCase().trim(), password, password_confirmation: password, name, phone } }, false),
   
   getCurrentUser: () => 
     apiService.get('/auth/me'),
