@@ -3,7 +3,7 @@
 
 import { Platform } from 'react-native';
 
-const isDevelopment = process.env.EXPO_PUBLIC_ENV === 'development' || __DEV__;
+const isDevelopment = process.env.EXPO_PUBLIC_ENV === 'development';
 
 // Helper function to get the correct API URL for the current environment
 const getBaseApiUrl = () => {

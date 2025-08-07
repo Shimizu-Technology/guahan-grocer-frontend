@@ -130,9 +130,56 @@ npm run web
 
 # Type checking
 npx tsc --noEmit
+```
 
-# Build for production
-eas build --platform all
+## 🚀 Deployment Instructions
+
+### **Frontend Web (Netlify) - Auto-deploy**
+```bash
+# 1. Build the web version
+npx expo export -p web
+
+# 2. Commit and push (includes the dist/ folder)
+git add .
+git commit -m "Frontend web changes"
+git push origin main
+
+# ✅ Auto-deploys to Netlify
+# Check: https://guahan-grocer.netlify.app
+```
+
+### **iOS App (TestFlight/App Store)**
+```bash
+# 1. Build for iOS
+eas build --platform ios --profile production-ios
+
+# 2. Submit to TestFlight
+eas submit --platform ios --latest
+
+# 3. Wait 5-10 minutes for Apple processing
+# 4. Update available in TestFlight app
+# Check: https://appstoreconnect.apple.com/apps/6749652653/testflight/ios
+```
+
+### **Android App (Google Play)**
+```bash
+# Build for Android (when ready)
+eas build --platform android --profile production
+eas submit --platform android --latest
+```
+
+## 🔄 Complete Deployment Workflow
+
+```bash
+# For most changes (backend + frontend web):
+npx expo export -p web  # Build web version
+git add .
+git commit -m "Your changes"
+git push origin main     # Auto-deploys backend + web
+
+# For iOS updates (manual):
+eas build --platform ios --profile production-ios
+eas submit --platform ios --latest
 ```
 
 ## 📦 Key Dependencies
