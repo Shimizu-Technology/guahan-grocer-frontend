@@ -3,26 +3,18 @@
 
 import { Platform } from 'react-native';
 
-const isDevelopment = process.env.EXPO_PUBLIC_ENV === 'development';
-
-// Helper function to get the correct API URL for the current environment
+// Force production for all builds except local development
 const getBaseApiUrl = () => {
-  // For development, use localhost
-  if (isDevelopment) {
-    // Use Platform.OS to detect the platform reliably
-    if (Platform.OS === 'web') {
-      // Web browser can use localhost
-      return 'http://localhost:3000/api/v1';
-    } else {
-      // Mobile device (iOS/Android) needs to use the computer's IP address
-      // run ipconfig getifaddr en0 to get the IP address
-      return 'http://192.168.1.190:3000/api/v1';
-    }
+  // Only use localhost for local development on web
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    return 'http://localhost:3000/api/v1';
   }
   
-  // Production URL - hardcoded since it's always the same
+  // Always use production URL for mobile apps and deployed web
   return 'https://guahan-grocer-backend.onrender.com/api/v1';
 };
+
+const isDevelopment = false; // Force production mode for builds
 
 export const config = {
   // API Configuration
