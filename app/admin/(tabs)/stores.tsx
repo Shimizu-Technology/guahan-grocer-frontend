@@ -248,7 +248,7 @@ export default function AdminStoresScreen() {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Store Management</Text>
+        <Text style={styles.headerTitle}>Store Management</Text>
         <TouchableOpacity style={styles.addButton} onPress={handleAddStore}>
           <Ionicons name="add" size={24} color="white" />
         </TouchableOpacity>
@@ -421,7 +421,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
-  title: {
+  headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#1F2937',

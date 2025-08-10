@@ -138,6 +138,22 @@ class ApiService {
     }
   }
 
+  // PUT with multipart/form-data
+  async putFormData<T>(endpoint: string, formData: FormData, includeAuth: boolean = true): Promise<ApiResponse<T>> {
+    try {
+      const token = includeAuth ? await AsyncStorage.getItem(config.STORAGE_KEYS.TOKEN) : null;
+      const headers: HeadersInit = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const url = `${this.baseURL}${endpoint}`;
+      console.log(`API Request: PUT ${url}`);
+      const response = await fetch(url, { method: 'PUT', headers, body: formData });
+      return this.handleResponse<T>(response);
+    } catch (error) {
+      console.error('API FormData PUT Error:', error);
+      return { error: 'Network error', errors: ['Network connection failed. Please check your internet connection.'] };
+    }
+  }
+
   // File upload method for image uploads
   async uploadFile<T>(endpoint: string, file: any, includeAuth: boolean = true): Promise<ApiResponse<T>> {
     try {
@@ -227,6 +243,9 @@ export const productsAPI = {
   
   create: (formData: FormData) => 
     apiService.postFormData('/products', formData),
+
+  update: (id: string, formData: FormData) =>
+    apiService.putFormData(`/products/${id}`, formData),
 };
 
 export const favoritesAPI = {
@@ -346,8 +365,23 @@ export const unitsAPI = {
 };
 
 export const usersAPI = {
+  // List users (admin only). Optional filters like role/active supported by backend
+  list: (params?: { role?: string; active?: boolean }) => {
+    const search = new URLSearchParams();
+    if (params?.role) search.append('role', params.role);
+    if (params?.active !== undefined) search.append('active', String(params.active));
+    const qs = search.toString();
+    return apiService.get(`/users${qs ? `?${qs}` : ''}`);
+  },
+
+  // List available drivers (admin only)
+  getAvailableDrivers: () => apiService.get('/drivers/available'),
+
   getById: (id: string) => 
     apiService.get(`/users/${id}`),
+  
+  create: (userData: any) => 
+    apiService.post('/users', { user: userData }),
   
   update: (id: string, userData: any) => 
     apiService.put(`/users/${id}`, { user: userData }),

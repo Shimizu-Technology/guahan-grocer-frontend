@@ -87,55 +87,142 @@ export default function DriverEarnings() {
           });
         }
       } else if (currentPeriod === 'week') {
-        // Generate mock weekly data (would normally fetch from API)
-        const weekData: DailyEarnings[] = [];
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - 6); // Last 7 days
+        // Use last 7 days including today
+        const startDateObj = new Date();
+        startDateObj.setDate(startDateObj.getDate() - 6);
+        const startDate = startDateObj.toISOString().split('T')[0];
 
+        // Fetch range stats from backend
+        const rangeResponse = await driverStatsAPI.getStats(startDate, today);
+        const statsArray: any[] = Array.isArray(rangeResponse.data) ? rangeResponse.data : [];
+
+        // Build a date -> stat map for quick lookup
+        const byDate: Record<string, any> = {};
+        for (const stat of statsArray) {
+          const key = (stat.date || '').split('T')[0];
+          if (key) byDate[key] = stat;
+        }
+
+        // Create 7-day series, filling gaps with zeros
+        const weekData: DailyEarnings[] = [];
         for (let i = 0; i < 7; i++) {
-          const date = new Date(startDate);
-          date.setDate(startDate.getDate() + i);
-          
-          // Mock earnings data (in real app, fetch from API)
-          const earnings = Math.random() * 150 + 50; // $50-200 per day
-          const deliveries = Math.floor(Math.random() * 15) + 5; // 5-20 deliveries
-          
+          const d = new Date(startDateObj);
+          d.setDate(startDateObj.getDate() + i);
+          const key = d.toISOString().split('T')[0];
+          const s = byDate[key];
           weekData.push({
-            date: date.toISOString().split('T')[0],
-            earnings: Math.round(earnings * 100) / 100,
-            deliveries,
+            date: key,
+            earnings: s ? (s.totalEarnings || 0) : 0,
+            deliveries: s ? (s.totalDeliveries || 0) : 0,
           });
         }
-        
         setWeeklyData(weekData);
-        
-        // Calculate week totals
-        const weekTotalEarnings = weekData.reduce((sum, day) => sum + day.earnings, 0);
-        const weekTotalDeliveries = weekData.reduce((sum, day) => sum + day.deliveries, 0);
-        
+
+        // Aggregate totals for the week
+        let totals = {
+          totalEarnings: 0,
+          basePay: 0,
+          tips: 0,
+          bonuses: 0,
+          expenses: 0,
+          deliveries: 0,
+          hoursOnline: 0,
+          ordersAccepted: 0,
+          ordersOffered: 0,
+          ratingWeightedSum: 0,
+          ratingCount: 0,
+        };
+
+        for (const s of statsArray) {
+          totals.totalEarnings += s.totalEarnings || 0;
+          totals.basePay += s.basePay || 0;
+          totals.tips += s.tips || 0;
+          totals.bonuses += s.bonuses || 0;
+          totals.expenses += s.expenses || 0;
+          totals.deliveries += s.totalDeliveries || 0;
+          totals.hoursOnline += s.hoursOnline || 0;
+          totals.ordersAccepted += s.ordersAccepted || 0;
+          totals.ordersOffered += s.ordersOffered || 0;
+          if (s.averageRating && s.totalRatings) {
+            totals.ratingWeightedSum += (s.averageRating || 0) * (s.totalRatings || 0);
+            totals.ratingCount += s.totalRatings || 0;
+          }
+        }
+
+        const acceptanceRate = totals.ordersOffered > 0
+          ? (totals.ordersAccepted / totals.ordersOffered) * 100
+          : 0;
+        const avgRating = totals.ratingCount > 0
+          ? totals.ratingWeightedSum / totals.ratingCount
+          : null;
+
         setEarningsData({
-          totalEarnings: weekTotalEarnings,
-          basePay: weekTotalEarnings * 0.7,
-          tips: weekTotalEarnings * 0.25,
-          bonuses: weekTotalEarnings * 0.05,
-          expenses: 15.50 * 7,
-          deliveries: weekTotalDeliveries,
-          hoursOnline: 40, // Mock: 40 hours per week
-          acceptanceRate: 85,
-          avgRating: 4.8,
+          totalEarnings: totals.totalEarnings,
+          basePay: totals.basePay,
+          tips: totals.tips,
+          bonuses: totals.bonuses,
+          expenses: totals.expenses,
+          deliveries: totals.deliveries,
+          hoursOnline: totals.hoursOnline,
+          acceptanceRate,
+          avgRating,
         });
       } else {
-        // Month view (mock data)
+        // Month view: fetch from the first day of this month to today
+        const startOfMonth = new Date();
+        startOfMonth.setDate(1);
+        const startDate = startOfMonth.toISOString().split('T')[0];
+
+        const rangeResponse = await driverStatsAPI.getStats(startDate, today);
+        const statsArray: any[] = Array.isArray(rangeResponse.data) ? rangeResponse.data : [];
+
+        let totals = {
+          totalEarnings: 0,
+          basePay: 0,
+          tips: 0,
+          bonuses: 0,
+          expenses: 0,
+          deliveries: 0,
+          hoursOnline: 0,
+          ordersAccepted: 0,
+          ordersOffered: 0,
+          ratingWeightedSum: 0,
+          ratingCount: 0,
+        };
+
+        for (const s of statsArray) {
+          totals.totalEarnings += s.totalEarnings || 0;
+          totals.basePay += s.basePay || 0;
+          totals.tips += s.tips || 0;
+          totals.bonuses += s.bonuses || 0;
+          totals.expenses += s.expenses || 0;
+          totals.deliveries += s.totalDeliveries || 0;
+          totals.hoursOnline += s.hoursOnline || 0;
+          totals.ordersAccepted += s.ordersAccepted || 0;
+          totals.ordersOffered += s.ordersOffered || 0;
+          if (s.averageRating && s.totalRatings) {
+            totals.ratingWeightedSum += (s.averageRating || 0) * (s.totalRatings || 0);
+            totals.ratingCount += s.totalRatings || 0;
+          }
+        }
+
+        const acceptanceRate = totals.ordersOffered > 0
+          ? (totals.ordersAccepted / totals.ordersOffered) * 100
+          : 0;
+        const avgRating = totals.ratingCount > 0
+          ? totals.ratingWeightedSum / totals.ratingCount
+          : null;
+
         setEarningsData({
-          totalEarnings: 2150.75,
-          basePay: 1505.53,
-          tips: 537.69,
-          bonuses: 107.54,
-          expenses: 465.00, // $15.50 * 30 days
-          deliveries: 87,
-          hoursOnline: 160, // Mock: 160 hours per month
-          acceptanceRate: 87,
-          avgRating: 4.8,
+          totalEarnings: totals.totalEarnings,
+          basePay: totals.basePay,
+          tips: totals.tips,
+          bonuses: totals.bonuses,
+          expenses: totals.expenses,
+          deliveries: totals.deliveries,
+          hoursOnline: totals.hoursOnline,
+          acceptanceRate,
+          avgRating,
         });
       }
 

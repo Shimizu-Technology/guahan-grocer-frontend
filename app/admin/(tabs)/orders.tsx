@@ -9,12 +9,14 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { ordersAPI } from '../../../services/api';
+import { ordersAPI, usersAPI } from '../../../services/api';
 
 interface OrderData {
-  id: string;
+  id: string; // formatted
+  rawId?: string; // numeric id as string
   customer: string;
   driver: string;
   status: string;
@@ -22,6 +24,7 @@ interface OrderData {
   items: number;
   store: string;
   time: string;
+  assigned?: boolean; // whether a driver is already assigned
 }
 
 export default function AdminOrders() {
@@ -30,6 +33,13 @@ export default function AdminOrders() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Modal state
+  const [modalVisible, setModalVisible] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [orderDetails, setOrderDetails] = useState<any | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [drivers, setDrivers] = useState<any[]>([]);
+  const [assigning, setAssigning] = useState(false);
 
   // Fetch orders from API
   const fetchOrders = async (showLoading = true) => {
@@ -42,6 +52,7 @@ export default function AdminOrders() {
         // Format orders for display
         const formattedOrders: OrderData[] = (response.data as any[]).map((order: any) => ({
           id: `#ORD${order.id.toString().padStart(3, '0')}`,
+          rawId: order.id?.toString(),
           customer: 'Customer', // Backend doesn't expose customer names for privacy
           driver: order.driver?.name || 'Unassigned',
           status: order.status,
@@ -49,6 +60,7 @@ export default function AdminOrders() {
           items: order.items?.length || 0,
           store: order.storeName || 'Store',
           time: getTimeAgo(order.createdAt),
+          assigned: Boolean(order.driver),
         }));
 
         setOrders(formattedOrders);
@@ -60,6 +72,65 @@ export default function AdminOrders() {
       setError('Failed to load orders. Please try again.');
     } finally {
       if (showLoading) setLoading(false);
+    }
+  };
+
+  const openOrderDetails = async (order: OrderData) => {
+    try {
+      const rawId = order.rawId || order.id.replace('#ORD', '');
+      setSelectedOrderId(rawId);
+      setDetailsLoading(true);
+      setModalVisible(true);
+      const [orderResp, driversResp] = await Promise.all([
+        ordersAPI.getById(rawId),
+        usersAPI.getAvailableDrivers(),
+      ]);
+      setOrderDetails(orderResp.data || null);
+      setDrivers(Array.isArray(driversResp.data) ? driversResp.data : []);
+    } catch (e) {
+      console.error('Failed to load order details:', e);
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
+
+  const closeOrderDetails = () => {
+    setModalVisible(false);
+    setOrderDetails(null);
+    setSelectedOrderId(null);
+  };
+
+  const updateOrderStatus = async (status: string) => {
+    if (!selectedOrderId) return;
+    try {
+      setAssigning(true);
+      const resp = await ordersAPI.updateStatus(selectedOrderId, status);
+      if (resp.data) {
+        setOrderDetails(resp.data);
+        fetchOrders(false);
+      }
+    } catch (e) {
+      console.error('Failed to update status:', e);
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const assignDriver = async (driverId: string) => {
+    if (!selectedOrderId) return;
+    try {
+      setAssigning(true);
+      const resp = await ordersAPI.assignDriver(selectedOrderId, driverId);
+      if (resp.data) {
+        // Always refetch the assigned order to get canonical state (driver + assigned flag)
+        const refreshed = await ordersAPI.getById(selectedOrderId);
+        setOrderDetails(refreshed.data || null);
+        await fetchOrders(false);
+      }
+    } catch (e) {
+      console.error('Failed to assign driver:', e);
+    } finally {
+      setAssigning(false);
     }
   };
 
@@ -90,6 +161,7 @@ export default function AdminOrders() {
   const filters = [
     { key: 'all', label: 'All Orders', count: orders.length },
     { key: 'pending', label: 'Pending', count: orders.filter(o => o.status === 'pending').length },
+    { key: 'accepted', label: 'Accepted', count: orders.filter(o => o.status === 'accepted').length },
     { key: 'shopping', label: 'Shopping', count: orders.filter(o => o.status === 'shopping').length },
     { key: 'delivering', label: 'Delivering', count: orders.filter(o => o.status === 'delivering').length },
     { key: 'delivered', label: 'Delivered', count: orders.filter(o => o.status === 'delivered').length },
@@ -98,6 +170,7 @@ export default function AdminOrders() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending': return '#EA580C';
+      case 'accepted': return '#0F766E';
       case 'shopping': return '#0F766E';
       case 'delivering': return '#7C3AED';
       case 'delivered': return '#16A34A';
@@ -109,6 +182,7 @@ export default function AdminOrders() {
   const getStatusText = (status: string) => {
     switch (status) {
       case 'pending': return 'Pending';
+      case 'accepted': return 'Accepted';
       case 'shopping': return 'Shopping';
       case 'delivering': return 'Delivering';
       case 'delivered': return 'Delivered';
@@ -116,6 +190,8 @@ export default function AdminOrders() {
       default: return status;
     }
   };
+
+  const getStatusBackground = (status: string) => `${getStatusColor(status)}20`;
 
   const filteredOrders = selectedFilter === 'all' 
     ? orders 
@@ -258,12 +334,12 @@ export default function AdminOrders() {
                 </View>
 
                 <View style={styles.orderActions}>
-                  <TouchableOpacity style={styles.actionButton}>
+                  <TouchableOpacity style={styles.actionButton} onPress={() => openOrderDetails(order)}>
                     <Ionicons name="eye-outline" size={16} color="#0F766E" />
                     <Text style={styles.actionText}>View Details</Text>
                   </TouchableOpacity>
-                  {order.status === 'pending' && (
-                    <TouchableOpacity style={[styles.actionButton, styles.primaryAction]}>
+                  {order.status === 'pending' && !order.assigned && (
+                    <TouchableOpacity style={[styles.actionButton, styles.primaryAction]} onPress={() => openOrderDetails(order)}>
                       <Ionicons name="person-add-outline" size={16} color="white" />
                       <Text style={[styles.actionText, styles.primaryActionText]}>Assign Driver</Text>
                     </TouchableOpacity>
@@ -273,6 +349,118 @@ export default function AdminOrders() {
             ))
           )}
         </ScrollView>
+
+        {/* Order Details Modal */}
+        <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={closeOrderDetails}>
+          <SafeAreaView style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Order Details</Text>
+              <TouchableOpacity onPress={closeOrderDetails} style={styles.closeButton}>
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            {detailsLoading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#0F766E" />
+                <Text style={styles.loadingText}>Loading order...</Text>
+              </View>
+            ) : orderDetails ? (
+              <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+                <View style={styles.summaryRow}>
+                  <View style={styles.summaryCell}>
+                    <Text style={styles.summaryLabel}>Order</Text>
+                    <Text style={styles.summaryValue}>#ORD{orderDetails.id}</Text>
+                  </View>
+                  <View style={styles.summaryCell}>
+                    <Text style={styles.summaryLabel}>Status</Text>
+                    <View style={[styles.summaryStatusPill, { backgroundColor: getStatusBackground(orderDetails.status) }]}>
+                      <Text style={[styles.summaryStatusText, { color: getStatusColor(orderDetails.status) }]}>
+                        {getStatusText(orderDetails.status)}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.summaryCell}>
+                    <Text style={styles.summaryLabel}>Total</Text>
+                    <Text style={styles.summaryValue}>${Number(orderDetails.total || 0).toFixed(2)}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Items</Text>
+                  <View style={styles.itemsList}>
+                    {orderDetails.items?.map((item: any) => (
+                      <View key={item.id} style={styles.itemRow}>
+                        <Text style={styles.itemName}>{item.product?.name || 'Item'}</Text>
+                        <Text style={styles.itemQty}>x{item.quantity}</Text>
+                        <Text style={styles.itemPrice}>${Number(item.price).toFixed(2)}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Delivery</Text>
+                  <View style={styles.infoGrid}>
+                    <View style={styles.infoCell}><Text style={styles.infoLabel}>ETA</Text><Text style={styles.infoValue}>{orderDetails.eta || '—'}</Text></View>
+                    <View style={styles.infoCell}><Text style={styles.infoLabel}>Delivery Time</Text><Text style={styles.infoValue}>{orderDetails.deliveryTime || 'ASAP'}</Text></View>
+                    <View style={styles.infoCell}><Text style={styles.infoLabel}>Delivery Fee</Text><Text style={styles.infoValue}>${Number(orderDetails.deliveryFee || 0).toFixed(2)}</Text></View>
+                    <View style={styles.infoCell}><Text style={styles.infoLabel}>Tip</Text><Text style={styles.infoValue}>${Number(orderDetails.tipAmount || 0).toFixed(2)}</Text></View>
+                  </View>
+                </View>
+
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Driver</Text>
+                  <View style={styles.driverRow}>
+                    <Text style={styles.driverName}>{orderDetails.driver?.name || 'Unassigned'}</Text>
+                  </View>
+
+                  {orderDetails.status === 'pending' && drivers.length > 0 && (
+                    <View style={styles.driverList}>
+                      <Text style={styles.subSectionTitle}>Available Drivers</Text>
+                      {drivers.map((item: any) => (
+                        <View key={item.id} style={styles.driverItem}>
+                          <Text style={styles.driverItemName}>{item.name}</Text>
+                          <TouchableOpacity style={[styles.smallButton, styles.primaryAction]} disabled={assigning} onPress={() => assignDriver(item.id)}>
+                            {assigning ? <ActivityIndicator size="small" color="#fff" /> : <Text style={[styles.actionText, styles.primaryActionText]}>Assign</Text>}
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Actions</Text>
+                  <View style={styles.segmentGroup}>
+                    {['pending','shopping','delivering'].map((s, index) => (
+                      <TouchableOpacity
+                        key={s}
+                        style={[
+                          styles.segmentButton,
+                          index === 0 && styles.segmentButtonFirst,
+                          index === 2 && styles.segmentButtonLast,
+                          orderDetails.status === s && styles.segmentButtonActive,
+                        ]}
+                        onPress={() => updateOrderStatus(s)}
+                      >
+                        <Text style={[styles.segmentButtonText, orderDetails.status === s && styles.segmentButtonTextActive]}>
+                          {getStatusText(s)}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              </ScrollView>
+            ) : (
+              <View style={styles.errorContainer}>
+                <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
+                <Text style={styles.errorText}>Failed to load order.</Text>
+              </View>
+            )}
+
+          </SafeAreaView>
+        </Modal>
       </SafeAreaView>
     </>
   );
@@ -507,5 +695,88 @@ const styles = StyleSheet.create({
   },
   primaryActionText: {
     color: 'white',
+  },
+
+  // Modal styles
+  modalContainer: { flex: 1, backgroundColor: 'white' },
+  modalHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#E5E7EB'
+  },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#1F2937' },
+  closeButton: { padding: 4 },
+  modalContent: { paddingHorizontal: 20 },
+  section: { marginTop: 16, marginBottom: 8 },
+  sectionTitle: { fontSize: 16, fontWeight: '600', color: '#1F2937', marginBottom: 8 },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#F8FAFC', borderRadius: 12, padding: 16, marginTop: 12 },
+  summaryCell: { flex: 1 },
+  summaryLabel: { fontSize: 12, color: '#6B7280', marginBottom: 4 },
+  summaryValue: { fontSize: 18, fontWeight: '700', color: '#0F766E' },
+  itemsList: { backgroundColor: 'white', borderRadius: 12, padding: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+  itemRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  itemName: { flex: 1, color: '#1F2937' },
+  itemQty: { width: 40, textAlign: 'right', color: '#6B7280' },
+  itemPrice: { width: 80, textAlign: 'right', color: '#1F2937', fontWeight: '600' },
+  infoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  infoCell: { width: '48%', backgroundColor: '#F9FAFB', borderRadius: 12, padding: 12 },
+  infoLabel: { color: '#6B7280', fontSize: 12, marginBottom: 4 },
+  infoValue: { color: '#1F2937', fontWeight: '600' },
+  driverRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  driverName: { fontSize: 16, color: '#1F2937', fontWeight: '600' },
+  driverList: { marginTop: 8, backgroundColor: '#F9FAFB', borderRadius: 12, padding: 8 },
+  subSectionTitle: { fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 4, paddingHorizontal: 4 },
+  driverItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
+  driverItemName: { color: '#1F2937' },
+  smallButton: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
+  actionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  statusButton: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: 'white' },
+  statusButtonActive: { borderColor: '#0F766E', backgroundColor: '#ECFDF5' },
+  statusButtonText: { color: '#374151', fontWeight: '600' },
+  statusButtonTextActive: { color: '#0F766E' },
+
+  // Summary status pill
+  summaryStatusPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    alignSelf: 'flex-start',
+  },
+  summaryStatusText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  // Segmented control for actions
+  segmentGroup: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+    overflow: 'hidden',
+    alignSelf: 'flex-start',
+  },
+  segmentButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#FFFFFF',
+  },
+  segmentButtonFirst: {
+    borderRightWidth: 1,
+    borderRightColor: '#E5E7EB',
+  },
+  segmentButtonLast: {
+    borderLeftWidth: 1,
+    borderLeftColor: '#E5E7EB',
+  },
+  segmentButtonActive: {
+    backgroundColor: '#ECFDF5',
+  },
+  segmentButtonText: {
+    color: '#374151',
+    fontWeight: '600',
+  },
+  segmentButtonTextActive: {
+    color: '#0F766E',
   },
 }); 

@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
+import SimpleImage from '../../../components/shared/SimpleImage';
 import { productsAPI, categoriesAPI, unitsAPI } from '../../../services/api';
 
 interface Product {
@@ -61,8 +62,9 @@ export default function AdminInventory() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Add Product Modal States
+  // Add/Edit Product Modal States
   const [addModalVisible, setAddModalVisible] = useState(false);
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
   const [unitDropdownOpen, setUnitDropdownOpen] = useState(false);
@@ -79,6 +81,38 @@ export default function AdminInventory() {
     unit: '',
     trackInventory: true,
   });
+
+  // Keep refs for current selection when editing so we can show existing image
+  const [selectedProductImageUrl, setSelectedProductImageUrl] = useState<string | null>(null);
+  const [selectedProductImgixUrl, setSelectedProductImgixUrl] = useState<string | null>(null);
+
+  // When an item is selected for editing, load full product to get image urls
+  useEffect(() => {
+    const loadDetails = async () => {
+      if (!editingProductId) return;
+      try {
+        console.log('[Inventory] Fetching product by id for edit:', editingProductId);
+        const resp = await productsAPI.getById(editingProductId);
+        const p: any = resp.data || {};
+        console.log('[Inventory] Product details response keys:', Object.keys(p || {}));
+        const images = p?.images || {};
+        console.log('[Inventory] images block:', images);
+        const chosenDisplay = images.large || images.medium || images.original || null;
+        const fallbackUrl = p?.imageUrl || images.original || null;
+        console.log('[Inventory] chosenDisplay:', chosenDisplay, 'fallbackUrl:', fallbackUrl);
+        setSelectedProductImgixUrl(chosenDisplay);
+        setSelectedProductImageUrl(fallbackUrl);
+      } catch (e) {
+        console.warn('[Inventory] Failed to load product details for edit:', e);
+      }
+    };
+    loadDetails();
+  }, [editingProductId]);
+
+  // Debug logger for render-time image decision
+  useEffect(() => {
+    console.log('[Inventory] image state -> newProduct.image?', !!(newProduct as any).image, 'imgixUrl:', selectedProductImgixUrl, 'imageUrl:', selectedProductImageUrl, 'editingProductId:', editingProductId);
+  }, [newProduct, selectedProductImgixUrl, selectedProductImageUrl, editingProductId]);
 
   // Dynamic categories and units from backend
   const [availableCategories, setAvailableCategories] = useState<{ id: number; name: string }[]>([]);
@@ -188,6 +222,8 @@ export default function AdminInventory() {
   };
 
   const handleAddProduct = () => {
+    setEditingProductId(null);
+    resetForm();
     setAddModalVisible(true);
   };
 
@@ -201,6 +237,8 @@ export default function AdminInventory() {
       unit: '',
       trackInventory: true,
     });
+    setSelectedProductImageUrl(null);
+    setSelectedProductImgixUrl(null);
     setCategoryDropdownOpen(false);
     setUnitDropdownOpen(false);
     setShowNewCategoryInput(false);
@@ -211,6 +249,7 @@ export default function AdminInventory() {
 
   const closeAddModal = () => {
     setAddModalVisible(false);
+    setEditingProductId(null);
     resetForm();
   };
 
@@ -226,6 +265,38 @@ export default function AdminInventory() {
       }));
     }
     setCategoryDropdownOpen(false);
+  };
+
+  const submitProductUpdate = async () => {
+    if (!editingProductId) return;
+    try {
+      setIsSubmitting(true);
+      const formData = new FormData();
+      formData.append('product[name]', newProduct.name);
+      if (newProduct.categoryId) formData.append('product[category_ids][]', newProduct.categoryId.toString());
+      formData.append('product[price]', newProduct.price);
+      formData.append('product[description]', newProduct.description);
+      formData.append('product[track_inventory]', newProduct.trackInventory.toString());
+      if (newProduct.trackInventory) formData.append('product[stock_quantity]', newProduct.stockQuantity);
+      if (newProduct.unitId) formData.append('product[unit_id]', newProduct.unitId.toString());
+      if (newProduct.image) {
+        formData.append('product[image]', { uri: newProduct.image.uri, type: 'image/jpeg', name: 'product-image.jpg' } as any);
+      }
+
+      const response = await productsAPI.update(editingProductId, formData);
+      if (response.data) {
+        Alert.alert('Success', 'Product updated successfully!');
+        fetchProducts();
+        closeAddModal();
+      } else {
+        Alert.alert('Error', response.error || 'Failed to update product');
+      }
+    } catch (error) {
+      console.error('Failed to update product:', error);
+      Alert.alert('Error', 'Failed to update product. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const addNewCategory = async () => {
@@ -478,38 +549,69 @@ export default function AdminInventory() {
             filteredProducts.map((product) => {
               const stockStatus = getStockStatus(product);
               return (
-                <View key={product.id} style={styles.productCard}>
-                  <View style={styles.productHeader}>
-                    <View style={styles.productInfo}>
-                      <Text style={styles.productName}>{product.name}</Text>
-                      <Text style={styles.productCategory}>{product.category}</Text>
+                  <View key={product.id} style={styles.productCard}>
+                    <View style={styles.productHeader}>
+                      <View style={styles.productHeaderRow}>
+                        <View style={styles.productInfo}>
+                          <Text style={styles.productName} numberOfLines={2} ellipsizeMode="tail">{product.name}</Text>
+                          <Text style={styles.productCategory}>{product.category}</Text>
+                        </View>
+                      </View>
+                      <View style={[
+                        styles.statusBadge, 
+                        { backgroundColor: `${stockStatus.color}15` }
+                      ]}>
+                        <Text style={[styles.stockStatus, { 
+                          color: stockStatus.color,
+                          backgroundColor: 'transparent',
+                          paddingHorizontal: 0,
+                          paddingVertical: 0,
+                        }]}>
+                          {stockStatus.text}
+                        </Text>
+                      </View>
                     </View>
-                    <View style={[
-                      styles.statusBadge, 
-                      { backgroundColor: `${stockStatus.color}15` }
-                    ]}>
-                      <Text style={[styles.stockStatus, { 
-                        color: stockStatus.color,
-                        backgroundColor: 'transparent',
-                        paddingHorizontal: 0,
-                        paddingVertical: 0,
-                      }]}>
-                        {stockStatus.text}
-                      </Text>
-                    </View>
-                  </View>
                   
                   <View style={styles.productDetails}>
                     <Text style={styles.productPrice}>${product.price}</Text>
                     <Text style={styles.productStock}>
-                      {product.trackInventory ? `${product.stock} ${product.unit}` : 'Always Available'}
+                      {product.trackInventory ? `${product.stock} ${product.unit}` : `per ${product.unit}`}
                     </Text>
                   </View>
                   
                   <View style={styles.productActions}>
                     <TouchableOpacity 
                       style={[styles.actionButton, styles.editButton]}
-                      onPress={() => console.log('Edit product:', product.id)}
+                      onPress={() => {
+                        // Populate form with existing values and open modal in pageSheet style (same as orders)
+                        setNewProduct((prev) => ({
+                          ...prev,
+                          name: product.name,
+                          category: product.category,
+                          price: String(product.price),
+                          description: prev.description || '',
+                          stockQuantity: String(product.stock || ''),
+                          unit: product.unit,
+                          trackInventory: product.trackInventory,
+                        }));
+                        // Capture existing image sources if present
+                        // Backend `product_json` provides imageUrl or images (with imgix URL)
+                        // Our product list mapping currently doesn't store them, so fetch by id now
+                        (async () => {
+                          try {
+                            const resp = await productsAPI.getById(String(product.id));
+                            const p: any = resp.data || {};
+                            // images can be { thumbnail, medium, large, original }
+                            const images = p?.images || {};
+                            // Prefer large/medium/imgix-like URL if present; else imageUrl
+                            setSelectedProductImgixUrl(images.large || images.medium || images.original || null);
+                            setSelectedProductImageUrl(p?.imageUrl || images.original || null);
+                          } catch (_) {}
+                        })();
+
+                        setEditingProductId(String(product.id));
+                        setAddModalVisible(true);
+                      }}
                     >
                       <Ionicons name="create-outline" size={14} color="#22C55E" />
                       <Text style={[styles.actionText, { color: '#22C55E' }]}>Edit</Text>
@@ -534,20 +636,17 @@ export default function AdminInventory() {
           )}
         </ScrollView>
 
-        {/* Add Product Modal */}
+        {/* Add/Edit Product Modal (pageSheet style to match Orders) */}
         <Modal
-          animationType="fade"
-          transparent={true}
+          animationType="slide"
+          presentationStyle="pageSheet"
           visible={addModalVisible}
           onRequestClose={closeAddModal}
         >
-          <View style={styles.modalOverlay}>
-            <KeyboardAvoidingView 
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={styles.modalContent}
-            >
+          <SafeAreaView style={styles.sheetContainer}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.sheetContent}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Add New Product</Text>
+                <Text style={styles.modalTitle}>{editingProductId ? 'Edit Product' : 'Add New Product'}</Text>
                 <TouchableOpacity onPress={closeAddModal} style={styles.closeButton}>
                   <Ionicons name="close" size={24} color="#6B7280" />
                 </TouchableOpacity>
@@ -558,14 +657,30 @@ export default function AdminInventory() {
                 <View style={styles.fieldContainer}>
                   <Text style={styles.fieldLabel}>Product Image</Text>
                   <TouchableOpacity style={styles.imageUpload} onPress={pickImage}>
-                    {newProduct.image ? (
-                      <Image source={{ uri: newProduct.image.uri }} style={styles.uploadedImage} />
-                    ) : (
-                      <>
-                        <Ionicons name="camera-outline" size={40} color="#9CA3AF" />
-                        <Text style={styles.imageUploadText}>Tap to select image</Text>
-                      </>
-                    )}
+                    {(() => {
+                      const localUri = (newProduct as any).image?.uri;
+                      const existing = selectedProductImgixUrl || selectedProductImageUrl;
+                      console.log('[Inventory] render image -> localUri:', localUri, 'existing:', existing);
+                      if (localUri) {
+                        return <Image source={{ uri: localUri }} style={styles.uploadedImage} />;
+                      }
+                      if (editingProductId && existing) {
+                        return (
+                          <SimpleImage
+                            src={existing}
+                            style={styles.uploadedImage}
+                            containerStyle={styles.imageContainer}
+                            accessibilityLabel="Existing product image"
+                          />
+                        );
+                      }
+                      return (
+                        <>
+                          <Ionicons name="camera-outline" size={40} color="#9CA3AF" />
+                          <Text style={styles.imageUploadText}>Tap to select image</Text>
+                        </>
+                      );
+                    })()}
                   </TouchableOpacity>
                 </View>
 
@@ -800,23 +915,23 @@ export default function AdminInventory() {
                 </TouchableOpacity>
                 <TouchableOpacity 
                   style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]} 
-                  onPress={submitProduct}
+                  onPress={editingProductId ? submitProductUpdate : submitProduct}
                   disabled={isSubmitting}
                 >
                   {isSubmitting ? (
                     <View style={styles.submitButtonContent}>
                       <ActivityIndicator size="small" color="white" />
                       <Text style={[styles.submitButtonText, { marginLeft: 8 }]}>
-                        {newProduct.image ? 'Uploading...' : 'Creating...'}
+                        {newProduct.image ? 'Uploading...' : (editingProductId ? 'Updating...' : 'Creating...')}
                       </Text>
                     </View>
                   ) : (
-                    <Text style={styles.submitButtonText}>Create Product</Text>
+                    <Text style={styles.submitButtonText}>{editingProductId ? 'Update Product' : 'Create Product'}</Text>
                   )}
                 </TouchableOpacity>
               </View>
             </KeyboardAvoidingView>
-          </View>
+          </SafeAreaView>
         </Modal>
       </SafeAreaView>
     </>
@@ -865,14 +980,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 16,
-    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: '700',
+    fontSize: 24,
+    fontWeight: 'bold',
     color: '#1F2937',
   },
   addButton: {
@@ -989,10 +1105,12 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
   },
   productHeader: {
+    marginBottom: 8,
+  },
+  productHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 8,
   },
   productInfo: {
     flex: 1,
@@ -1002,6 +1120,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1F2937',
     marginBottom: 2,
+    flexShrink: 1,
   },
   productCategory: {
     fontSize: 12,
@@ -1035,12 +1154,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   statusBadge: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
+    alignSelf: 'flex-start',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
+    marginLeft: 8,
   },
   productActions: {
     flexDirection: 'row',
@@ -1071,6 +1189,10 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   // Modal Styles
+  sheetContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
@@ -1148,21 +1270,32 @@ const styles = StyleSheet.create({
     borderColor: '#CBD5E1',
     borderStyle: 'dashed',
     borderRadius: 16,
-    height: 140,
+    height: 120, // match catalog itemImage height for consistent aspect
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#F8FAFC',
+  },
+  imageContainer: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 14,
+    overflow: 'hidden',
   },
   uploadedImage: {
     width: '100%',
     height: '100%',
     borderRadius: 14,
+    resizeMode: 'cover',
   },
   imageUploadText: {
     marginTop: 12,
     fontSize: 16,
     color: '#64748B',
     fontWeight: '500',
+  },
+  sheetContent: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
   },
   modalActions: {
     flexDirection: 'row',
