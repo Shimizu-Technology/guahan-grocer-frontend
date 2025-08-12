@@ -385,6 +385,9 @@ export const usersAPI = {
   
   update: (id: string, userData: any) => 
     apiService.put(`/users/${id}`, { user: userData }),
+  
+  delete: (id: string) => 
+    apiService.delete(`/users/${id}`),
 };
 
 export const addressesAPI = {

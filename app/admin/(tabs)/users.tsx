@@ -18,7 +18,7 @@ export default function AdminUsers() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState<{ name: string; email: string; phone: string; role: 'customer'|'driver'|'admin'; active: boolean }>({ name: '', email: '', phone: '', role: 'customer', active: true });
+  const [form, setForm] = useState<{ name: string; email: string; phone: string; role: 'customer'|'driver'|'admin'; active: boolean; password: string }>({ name: '', email: '', phone: '', role: 'customer', active: true, password: '' });
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
 
@@ -119,6 +119,7 @@ export default function AdminUsers() {
           phone: u.phone || '',
           role: (u.role || 'customer') as any,
           active: !!u.active,
+          password: '',
         });
       }
     } catch (e) {
@@ -131,13 +132,38 @@ export default function AdminUsers() {
 
   const saveUser = async () => {
     if (!selectedUserId) return;
+    
+    // Validate password if provided
+    if (form.password.trim() && form.password.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters long');
+      return;
+    }
+    
     try {
       setSaving(true);
-      const payload: any = { name: form.name, email: form.email, phone: form.phone, role: form.role, active: form.active };
+      const payload: any = { 
+        name: form.name, 
+        email: form.email, 
+        phone: form.phone, 
+        role: form.role, 
+        active: form.active 
+      };
+      
+      // Include password if provided
+      if (form.password.trim()) {
+        payload.password = form.password;
+      }
+      
       const resp = await usersAPI.update(selectedUserId, payload);
       if (resp.data) {
         await fetchUsers(false);
-        setModalVisible(false);
+        // Clear password field after successful update
+        setForm(prev => ({ ...prev, password: '' }));
+        const message = form.password.trim() 
+          ? 'User updated successfully with new password' 
+          : 'User updated successfully';
+        Alert.alert('Success', message);
+        setModalMode('view');
       } else {
         Alert.alert('Error', resp.error || 'Failed to update user');
       }
@@ -164,18 +190,50 @@ export default function AdminUsers() {
     }
   };
 
+  const deleteUser = async () => {
+    if (!selectedUserId) return;
+    
+    try {
+      setSaving(true);
+      const resp = await usersAPI.delete(selectedUserId);
+      
+      if (resp.data) {
+        await fetchUsers(false);
+        setModalVisible(false);
+        Alert.alert('Success', `${form.name} has been deleted successfully`);
+      } else {
+        const errorMessage = resp.error || resp.errors?.[0] || 'Failed to delete user';
+        Alert.alert('Error', errorMessage);
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Failed to delete user');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleAddUser = () => {
     setIsCreating(true);
     setModalMode('edit');
     setSelectedUserId(null);
     setRoleDropdownOpen(false);
-    setForm({ name: '', email: '', phone: '', role: 'customer', active: true });
+    setForm({ name: '', email: '', phone: '', role: 'customer', active: true, password: '' });
     setModalVisible(true);
   };
 
   const createUser = async () => {
     if (!form.name.trim() || !form.email.trim()) {
       Alert.alert('Error', 'Name and email are required');
+      return;
+    }
+
+    if (!form.password.trim()) {
+      Alert.alert('Error', 'Password is required');
+      return;
+    }
+
+    if (form.password.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters long');
       return;
     }
 
@@ -187,7 +245,7 @@ export default function AdminUsers() {
         phone: form.phone.trim(),
         role: form.role,
         active: form.active,
-        password: 'TempPassword123!' // You might want to generate this or make it configurable
+        password: form.password
       };
       
       const resp = await usersAPI.create(payload);
@@ -268,23 +326,23 @@ export default function AdminUsers() {
 
         {/* Role Filter Tabs - Secondary */}
         <View style={styles.roleFiltersSection}>
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.roleTabsContent}
-          >
-            {filters.map((filter) => (
-              <TouchableOpacity
-                key={filter.key}
+        >
+          {filters.map((filter) => (
+            <TouchableOpacity
+              key={filter.key}
                 style={[styles.roleTab, selectedFilter === filter.key && styles.activeRoleTab]}
                 onPress={() => setSelectedFilter(filter.key as any)}
               >
                 <Text style={[styles.roleTabText, selectedFilter === filter.key && styles.activeRoleTabText]}>
-                  {filter.label} ({filter.count})
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+                {filter.label} ({filter.count})
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
         </View>
 
         {/* Users List */}
@@ -302,12 +360,12 @@ export default function AdminUsers() {
             </TouchableOpacity>
           </View>
         ) : (
-          <ScrollView 
-            style={styles.usersList} 
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingTop: 12 }}
+        <ScrollView 
+          style={styles.usersList} 
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingTop: 12 }}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchUsers(false); }} />}
-          >
+        >
           {filteredUsers.map((user) => (
             <TouchableOpacity 
               key={user.id} 
@@ -384,7 +442,7 @@ export default function AdminUsers() {
               }} style={styles.closeButton}>
                 <Ionicons name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
-            </View>
+              </View>
 
             {detailsLoading ? (
               <View style={styles.loadingContainer}>
@@ -418,9 +476,9 @@ export default function AdminUsers() {
                                 {form.active ? 'ACTIVE' : 'INACTIVE'}
                               </Text>
                             </View>
-                          </View>
-                        </View>
-                      )}
+                  </View>
+                </View>
+              )}
 
                       {(modalMode === 'edit' || isCreating) ? (
                         <>
@@ -454,6 +512,21 @@ export default function AdminUsers() {
                               keyboardType="phone-pad"
                             />
                           </View>
+                          {(modalMode === 'edit' || isCreating) && (
+                            <View style={styles.editField}>
+                              <Text style={styles.editLabel}>
+                                {isCreating ? 'Password' : 'New Password (optional)'}
+                              </Text>
+                              <TextInput 
+                                style={styles.editInput} 
+                                value={form.password} 
+                                onChangeText={t => setForm({...form, password: t})}
+                                placeholder={isCreating ? "Enter password" : "Leave blank to keep current password"}
+                                secureTextEntry
+                                autoCapitalize="none"
+                              />
+                            </View>
+                          )}
                           <View style={styles.editField}>
                             <Text style={styles.editLabel}>Role</Text>
                             <TouchableOpacity 
@@ -495,13 +568,13 @@ export default function AdminUsers() {
                           <View style={styles.infoRow}>
                             <Text style={styles.infoLabel}>Phone</Text>
                             <Text style={styles.infoValue}>{form.phone || 'Not provided'}</Text>
-                          </View>
+                  </View>
                           <View style={styles.infoRow}>
                             <Text style={styles.infoLabel}>Account Created</Text>
                             <Text style={styles.infoValue}>{selectedUserId ? formatJoinDate(users.find(u => u.id === selectedUserId)?.joinedAt) : '—'}</Text>
-                          </View>
-                        </View>
-                      )}
+                  </View>
+                </View>
+              )}
                     </View>
                   </View>
 
@@ -509,16 +582,16 @@ export default function AdminUsers() {
                   {modalMode === 'view' && !isCreating && (
                     <View style={styles.section}>
                       <View style={styles.actionGrid}>
-                        <TouchableOpacity 
+                <TouchableOpacity 
                           style={styles.actionCard}
                           onPress={() => setModalMode('edit')}
-                        >
+                >
                           <Ionicons name="create-outline" size={24} color="#7C3AED" />
                           <Text style={styles.actionCardTitle}>Edit User</Text>
                           <Text style={styles.actionCardDesc}>Modify user details</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity 
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
                           style={styles.actionCard}
                           onPress={() => toggleActive(users.find(u => u.id === selectedUserId)!)}
                         >
@@ -533,8 +606,10 @@ export default function AdminUsers() {
                           <Text style={styles.actionCardDesc}>
                             {form.active ? 'Deactivate account' : 'Reactivate account'}
                           </Text>
-                        </TouchableOpacity>
+                </TouchableOpacity>
 
+
+                
                         <TouchableOpacity 
                           style={[styles.actionCard, styles.dangerAction]}
                           onPress={() => {
@@ -543,10 +618,7 @@ export default function AdminUsers() {
                               `Are you sure you want to delete ${form.name}? This action cannot be undone.`,
                               [
                                 { text: 'Cancel', style: 'cancel' },
-                                { text: 'Delete', style: 'destructive', onPress: () => {
-                                  // TODO: Implement delete functionality
-                                  Alert.alert('Feature Coming Soon', 'User deletion will be implemented soon.');
-                                }}
+                                { text: 'Delete', style: 'destructive', onPress: deleteUser }
                               ]
                             );
                           }}
@@ -563,7 +635,7 @@ export default function AdminUsers() {
                 {/* Modal Actions */}
                 {(modalMode === 'edit' || isCreating) && (
                   <View style={styles.modalActions}>
-                    <TouchableOpacity 
+                  <TouchableOpacity 
                       style={styles.cancelButton} 
                       onPress={() => {
                         if (isCreating) {
@@ -575,8 +647,8 @@ export default function AdminUsers() {
                       }}
                     >
                       <Text style={styles.cancelButtonText}>Cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity 
+                  </TouchableOpacity>
+                  <TouchableOpacity 
                       style={[styles.saveButton, saving && { opacity: 0.6 }]} 
                       onPress={async () => {
                         if (isCreating) {
@@ -596,13 +668,15 @@ export default function AdminUsers() {
                           <Text style={styles.saveButtonText}>{isCreating ? 'Create User' : 'Save Changes'}</Text>
                         </>
                       )}
-                    </TouchableOpacity>
+                  </TouchableOpacity>
                   </View>
                 )}
               </KeyboardAvoidingView>
             )}
           </SafeAreaView>
         </Modal>
+
+
 
       </SafeAreaView>
     </>
