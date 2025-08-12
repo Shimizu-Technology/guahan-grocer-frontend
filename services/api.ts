@@ -281,6 +281,9 @@ export const ordersAPI = {
   assignDriver: (id: string, driverId: string) =>
     apiService.put(`/orders/${id}/assign_driver`, { driver_id: driverId }),
   
+  batchAssign: (orderIds: string[], driverId: string) =>
+    apiService.post('/orders/batch_assign', { order_ids: orderIds, driver_id: driverId }),
+  
   acceptOrder: (id: string) =>
     apiService.put(`/orders/${id}/accept`),
   

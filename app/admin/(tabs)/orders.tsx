@@ -40,6 +40,10 @@ export default function AdminOrders() {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [drivers, setDrivers] = useState<any[]>([]);
   const [assigning, setAssigning] = useState(false);
+  // Batch assignment state
+  const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
+  const [batchAssignVisible, setBatchAssignVisible] = useState(false);
+  const [batchAssigning, setBatchAssigning] = useState(false);
 
   // Fetch orders from API
   const fetchOrders = async (showLoading = true) => {
@@ -132,6 +136,69 @@ export default function AdminOrders() {
     } finally {
       setAssigning(false);
     }
+  };
+
+  // Batch assignment functions
+  const toggleOrderSelection = (orderId: string) => {
+    setSelectedOrders(prev => 
+      prev.includes(orderId) 
+        ? prev.filter(id => id !== orderId)
+        : [...prev, orderId]
+    );
+  };
+
+  const clearSelection = () => {
+    setSelectedOrders([]);
+    setBatchAssignVisible(false);
+  };
+
+  const openBatchAssignment = () => {
+    if (selectedOrders.length < 2) {
+      alert('Please select at least 2 orders for batch assignment');
+      return;
+    }
+    setBatchAssignVisible(true);
+  };
+
+  const batchAssignOrders = async (driverId: string) => {
+    if (selectedOrders.length < 2) return;
+    
+    try {
+      setBatchAssigning(true);
+      const resp = await ordersAPI.batchAssign(selectedOrders, driverId);
+      
+      if (resp.data) {
+        // Show success message
+        const responseData = resp.data as any;
+        const message = responseData.message || `${selectedOrders.length} orders assigned successfully`;
+        alert(`✅ ${message}\nTotal earnings: $${responseData.total_earnings}`);
+        
+        // Clear selection and refresh
+        clearSelection();
+        await fetchOrders(false);
+      } else {
+        alert('Failed to assign orders: ' + (resp.error || 'Unknown error'));
+      }
+    } catch (error: any) {
+      console.error('Batch assignment failed:', error);
+      alert('Failed to assign orders: ' + (error.message || 'Network error'));
+    } finally {
+      setBatchAssigning(false);
+    }
+  };
+
+  const getSelectedOrdersInfo = () => {
+    const selectedOrderData = orders.filter(order => selectedOrders.includes(order.rawId || ''));
+    const totalEarnings = selectedOrderData.reduce((sum, order) => {
+      const total = parseFloat(order.total.replace('$', ''));
+      return sum + (total * 0.15) + 3; // Estimated payout: 15% of total + $3 base
+    }, 0);
+    
+    return {
+      orders: selectedOrderData,
+      totalEstimatedEarnings: totalEarnings.toFixed(2),
+      allPending: selectedOrderData.every(order => order.status === 'pending')
+    };
   };
 
   // Calculate time ago
@@ -234,6 +301,44 @@ export default function AdminOrders() {
           </TouchableOpacity>
         </View>
 
+        {/* Batch Controls Bar - Only shown when orders are selected */}
+        {selectedOrders.length > 0 && (
+          <View style={styles.batchControlsBar}>
+            <View style={styles.batchInfo}>
+              <Ionicons name="checkmark-circle" size={20} color="#0F766E" />
+              <Text style={styles.selectedCountText}>
+                {selectedOrders.length} order{selectedOrders.length !== 1 ? 's' : ''} selected
+              </Text>
+            </View>
+            
+            <View style={styles.batchActions}>
+              <TouchableOpacity 
+                style={[
+                  styles.batchAssignButton,
+                  selectedOrders.length < 2 && styles.batchAssignButtonDisabled
+                ]} 
+                onPress={openBatchAssignment}
+                disabled={selectedOrders.length < 2}
+              >
+                <Ionicons 
+                  name="people-outline" 
+                  size={16} 
+                  color={selectedOrders.length < 2 ? "#9CA3AF" : "white"} 
+                />
+                <Text style={[
+                  styles.batchAssignButtonText,
+                  selectedOrders.length < 2 && styles.batchAssignButtonTextDisabled
+                ]}>
+                  Batch
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.clearSelectionButton} onPress={clearSelection}>
+                <Text style={styles.clearSelectionText}>Clear</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         {/* Filter Tabs */}
         <View style={styles.filtersContainer}>
           <ScrollView 
@@ -294,9 +399,26 @@ export default function AdminOrders() {
             filteredOrders.map((order) => (
               <View key={order.id} style={styles.orderCard}>
                 <View style={styles.orderHeader}>
-                  <View>
-                    <Text style={styles.orderId}>{order.id}</Text>
-                    <Text style={styles.orderTime}>{order.time}</Text>
+                  <View style={styles.orderHeaderLeft}>
+                    {order.status === 'pending' && !order.assigned && (
+                      <TouchableOpacity 
+                        style={styles.checkbox}
+                        onPress={() => toggleOrderSelection(order.rawId || '')}
+                      >
+                        <View style={[
+                          styles.checkboxInner,
+                          selectedOrders.includes(order.rawId || '') && styles.checkboxSelected
+                        ]}>
+                          {selectedOrders.includes(order.rawId || '') && (
+                            <Ionicons name="checkmark" size={16} color="white" />
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                    <View>
+                      <Text style={styles.orderId}>{order.id}</Text>
+                      <Text style={styles.orderTime}>{order.time}</Text>
+                    </View>
                   </View>
                   <View style={[
                     styles.statusBadge,
@@ -507,6 +629,79 @@ export default function AdminOrders() {
               </View>
             )}
 
+          </SafeAreaView>
+        </Modal>
+
+        {/* Batch Assignment Modal */}
+        <Modal visible={batchAssignVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setBatchAssignVisible(false)}>
+          <SafeAreaView style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Batch Assignment</Text>
+              <TouchableOpacity onPress={() => setBatchAssignVisible(false)} style={styles.closeButton}>
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalContent}>
+              {(() => {
+                const selectedInfo = getSelectedOrdersInfo();
+                return (
+                  <>
+                    {/* Selected Orders Summary */}
+                    <View style={styles.section}>
+                      <Text style={styles.sectionTitle}>Selected Orders ({selectedOrders.length})</Text>
+                      {selectedInfo.orders.map((order) => (
+                        <View key={order.id} style={styles.selectedOrderItem}>
+                          <View>
+                            <Text style={styles.selectedOrderId}>{order.id}</Text>
+                            <Text style={styles.selectedOrderDetails}>{order.items} items • {order.total}</Text>
+                          </View>
+                          <Text style={styles.selectedOrderCustomer}>{order.customer}</Text>
+                        </View>
+                      ))}
+                      
+                      <View style={styles.batchSummary}>
+                        <Text style={styles.batchSummaryText}>
+                          Total Estimated Earnings: <Text style={styles.batchEarningsText}>${selectedInfo.totalEstimatedEarnings}</Text>
+                        </Text>
+                        {!selectedInfo.allPending && (
+                          <Text style={styles.warningText}>⚠️ Only pending orders can be batch assigned</Text>
+                        )}
+                      </View>
+                    </View>
+
+                    {/* Driver Selection */}
+                    {selectedInfo.allPending && (
+                      <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Select Driver</Text>
+                        {drivers.map((driver) => (
+                          <TouchableOpacity
+                            key={driver.id}
+                            style={styles.driverItem}
+                            onPress={() => batchAssignOrders(driver.id)}
+                            disabled={batchAssigning}
+                          >
+                            <View style={styles.driverInfo}>
+                              <Text style={styles.driverItemName}>{driver.name}</Text>
+                              <Text style={styles.driverStatus}>
+                                {driver.isOnline ? '🟢 Online' : '🔴 Offline'}
+                              </Text>
+                            </View>
+                            {batchAssigning ? (
+                              <ActivityIndicator size="small" color="#0F766E" />
+                            ) : (
+                              <View style={styles.assignBatchButton}>
+                                <Text style={styles.assignBatchButtonText}>Assign Batch</Text>
+                              </View>
+                            )}
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    )}
+                  </>
+                );
+              })()}
+            </ScrollView>
           </SafeAreaView>
         </Modal>
       </SafeAreaView>
@@ -888,5 +1083,154 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6B7280',
     textAlign: 'center',
+  },
+  // Batch assignment styles
+  batchControlsBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: '#F0FDF4',
+    borderBottomWidth: 1,
+    borderBottomColor: '#D1FAE5',
+  },
+  batchInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  selectedCountText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#065F46',
+  },
+  batchActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  batchAssignButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0F766E',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    gap: 4,
+  },
+  batchAssignButtonDisabled: {
+    backgroundColor: '#E5E7EB',
+  },
+  batchAssignButtonText: {
+    color: 'white',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  batchAssignButtonTextDisabled: {
+    color: '#9CA3AF',
+  },
+  clearSelectionButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 6,
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+  },
+  clearSelectionText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  orderHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  checkbox: {
+    padding: 4,
+  },
+  checkboxInner: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#D1D5DB',
+    backgroundColor: 'white',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxSelected: {
+    backgroundColor: '#0F766E',
+    borderColor: '#0F766E',
+  },
+  // Batch modal styles
+  selectedOrderItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  selectedOrderId: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  selectedOrderDetails: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  selectedOrderCustomer: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  batchSummary: {
+    marginTop: 16,
+    padding: 16,
+    backgroundColor: '#ECFDF5',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D1FAE5',
+  },
+  batchSummaryText: {
+    fontSize: 16,
+    color: '#374151',
+    textAlign: 'center',
+  },
+  batchEarningsText: {
+    fontWeight: 'bold',
+    color: '#0F766E',
+  },
+  warningText: {
+    fontSize: 14,
+    color: '#F59E0B',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  driverInfo: {
+    flex: 1,
+  },
+  driverStatus: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  assignBatchButton: {
+    backgroundColor: '#0F766E',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  assignBatchButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
   },
 }); 
