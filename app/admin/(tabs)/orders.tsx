@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Modal,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ordersAPI, usersAPI } from '../../../services/api';
@@ -40,10 +41,16 @@ export default function AdminOrders() {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [drivers, setDrivers] = useState<any[]>([]);
   const [assigning, setAssigning] = useState(false);
+  // Timeline state
+  const [timeline, setTimeline] = useState<any[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
   // Batch assignment state
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [batchAssignVisible, setBatchAssignVisible] = useState(false);
   const [batchAssigning, setBatchAssigning] = useState(false);
+  // Receipt modal state
+  const [receiptModalVisible, setReceiptModalVisible] = useState(false);
+  const [shouldReopenOrderModal, setShouldReopenOrderModal] = useState(false);
 
   // Fetch orders from API
   const fetchOrders = async (showLoading = true) => {
@@ -84,17 +91,21 @@ export default function AdminOrders() {
       const rawId = order.rawId || order.id.replace('#ORD', '');
       setSelectedOrderId(rawId);
       setDetailsLoading(true);
+      setTimelineLoading(true);
       setModalVisible(true);
-      const [orderResp, driversResp] = await Promise.all([
+      const [orderResp, driversResp, timelineResp] = await Promise.all([
         ordersAPI.getById(rawId),
         usersAPI.getAvailableDrivers(),
+        ordersAPI.getTimeline(rawId),
       ]);
       setOrderDetails(orderResp.data || null);
       setDrivers(Array.isArray(driversResp.data) ? driversResp.data : []);
+      setTimeline((timelineResp.data as any)?.timeline || []);
     } catch (e) {
       console.error('Failed to load order details:', e);
     } finally {
       setDetailsLoading(false);
+      setTimelineLoading(false);
     }
   };
 
@@ -102,6 +113,7 @@ export default function AdminOrders() {
     setModalVisible(false);
     setOrderDetails(null);
     setSelectedOrderId(null);
+    setTimeline([]);
   };
 
   const updateOrderStatus = async (status: string) => {
@@ -201,6 +213,25 @@ export default function AdminOrders() {
     };
   };
 
+  // Receipt modal functions
+  const openReceiptModal = () => {
+    setShouldReopenOrderModal(true);
+    setModalVisible(false); // Close order details modal
+    setTimeout(() => {
+      setReceiptModalVisible(true); // Open receipt modal after a brief delay
+    }, 300);
+  };
+
+  const closeReceiptModal = () => {
+    setReceiptModalVisible(false);
+    if (shouldReopenOrderModal) {
+      setTimeout(() => {
+        setModalVisible(true); // Reopen order details modal
+        setShouldReopenOrderModal(false);
+      }, 300);
+    }
+  };
+
   // Calculate time ago
   const getTimeAgo = (dateString: string) => {
     const date = new Date(dateString);
@@ -259,6 +290,36 @@ export default function AdminOrders() {
   };
 
   const getStatusBackground = (status: string) => `${getStatusColor(status)}20`;
+
+  const getEventIcon = (eventType: string) => {
+    switch (eventType) {
+      case 'created': return 'add-circle-outline';
+      case 'assigned': return 'person-add-outline';
+      case 'accepted': return 'checkmark-circle-outline';
+      case 'shopping_started': return 'basket-outline';
+      case 'shopping_completed': return 'bag-check-outline';
+      case 'receipt_uploaded': return 'receipt-outline';
+      case 'delivery_started': return 'car-outline';
+      case 'delivered': return 'checkmark-done-outline';
+      case 'cancelled': return 'close-circle-outline';
+      default: return 'time-outline';
+    }
+  };
+
+  const getEventColor = (eventType: string) => {
+    switch (eventType) {
+      case 'created': return '#3B82F6';
+      case 'assigned': return '#8B5CF6';
+      case 'accepted': return '#10B981';
+      case 'shopping_started': return '#F59E0B';
+      case 'shopping_completed': return '#F59E0B';
+      case 'receipt_uploaded': return '#6B7280';
+      case 'delivery_started': return '#3B82F6';
+      case 'delivered': return '#10B981';
+      case 'cancelled': return '#EF4444';
+      default: return '#6B7280';
+    }
+  };
 
   const filteredOrders = selectedFilter === 'all' 
     ? orders 
@@ -511,13 +572,19 @@ export default function AdminOrders() {
                 <View style={styles.section}>
                   <Text style={styles.sectionTitle}>Items</Text>
                   <View style={styles.itemsList}>
-                    {orderDetails.items?.map((item: any) => (
-                      <View key={item.id} style={styles.itemRow}>
-                        <Text style={styles.itemName}>{item.product?.name || 'Item'}</Text>
-                        <Text style={styles.itemQty}>x{item.quantity}</Text>
-                        <Text style={styles.itemPrice}>${Number(item.price).toFixed(2)}</Text>
+                    {orderDetails.items && orderDetails.items.length > 0 ? (
+                      orderDetails.items.map((item: any) => (
+                        <View key={item.id} style={styles.itemRow}>
+                          <Text style={styles.itemName}>{item.product?.name || 'Item'}</Text>
+                          <Text style={styles.itemQty}>x{String(item.quantity || 0)}</Text>
+                          <Text style={styles.itemPrice}>${Number(item.price || 0).toFixed(2)}</Text>
+                        </View>
+                      ))
+                    ) : (
+                      <View style={styles.emptyItemsContainer}>
+                        <Text style={styles.emptyItemsText}>No items found for this order</Text>
                       </View>
-                    ))}
+                    )}
                   </View>
                 </View>
 
@@ -575,49 +642,147 @@ export default function AdminOrders() {
                 </View>
 
                 {/* Order Timeline */}
-                {orderDetails.lastEvent && (
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Recent Activity</Text>
-                    <View style={styles.timelineCard}>
-                      <View style={styles.timelineEventRow}>
-                        <View style={styles.timelineEventIcon}>
-                          <Ionicons name="time-outline" size={16} color="#0F766E" />
-                        </View>
-                        <View style={styles.timelineEventContent}>
-                          <Text style={styles.timelineEventText}>{orderDetails.lastEvent.description}</Text>
-                          <Text style={styles.timelineEventTime}>{orderDetails.lastEvent.time_ago} by {orderDetails.lastEvent.user_name}</Text>
-                        </View>
-                      </View>
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Order Timeline</Text>
+                  {timelineLoading ? (
+                    <View style={styles.timelineLoadingContainer}>
+                      <ActivityIndicator size="small" color="#0F766E" />
+                      <Text style={styles.timelineLoadingText}>Loading timeline...</Text>
                     </View>
-                  </View>
-                )}
+                  ) : timeline.length > 0 ? (
+                    <View style={styles.timelineContainer}>
+                      {timeline.map((event, index) => (
+                        <View key={event.id} style={styles.timelineEventRow}>
+                          <View style={styles.timelineLeftColumn}>
+                            <View style={[styles.timelineEventIcon, { backgroundColor: getEventColor(event.event_type) + '20' }]}>
+                              <Ionicons 
+                                name={getEventIcon(event.event_type) as any} 
+                                size={16} 
+                                color={getEventColor(event.event_type)} 
+                              />
+                            </View>
+                            {index < timeline.length - 1 && <View style={styles.timelineLine} />}
+                          </View>
+                          <View style={styles.timelineRightColumn}>
+                            <View style={styles.timelineEventContent}>
+                              <Text style={styles.timelineEventText}>{String(event.description || 'No description')}</Text>
+                              <View style={styles.timelineEventMeta}>
+                                <Text style={styles.timelineEventTime}>{String(event.time_ago || 'unknown time')}</Text>
+                                {event.user && (
+                                  <View style={styles.timelineEventUser}>
+                                    <View style={[styles.userRoleBadge, { backgroundColor: event.user.role === 'admin' ? '#8B5CF6' : '#0F766E' }]}>
+                                      <Text style={styles.userRoleText}>{event.user.role}</Text>
+                                    </View>
+                                    <Text style={styles.timelineEventUserName}>{String(event.user.name || 'Unknown')}</Text>
+                                  </View>
+                                )}
+                              </View>
+                            </View>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  ) : (
+                    <View style={styles.emptyTimelineContainer}>
+                      <Ionicons name="time-outline" size={32} color="#9CA3AF" />
+                      <Text style={styles.emptyTimelineText}>No timeline events found</Text>
+                    </View>
+                  )}
+                </View>
 
                 {/* Performance Metrics for Completed Orders */}
                 {orderDetails.performanceMetrics && orderDetails.status === 'delivered' && (
                   <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Performance Metrics</Text>
                     <View style={styles.metricsGrid}>
-                      {orderDetails.performanceMetrics.totalProcessingTime && (
+                      {(orderDetails.performanceMetrics?.totalProcessingTime ?? 0) > 0 && (
                         <View style={styles.metricCard}>
                           <Ionicons name="time-outline" size={20} color="#6B7280" />
-                          <Text style={styles.metricValue}>{orderDetails.performanceMetrics.totalProcessingTime} min</Text>
+                          <Text style={styles.metricValue}>{String(orderDetails.performanceMetrics?.totalProcessingTime || 0)} min</Text>
                           <Text style={styles.metricLabel}>Total Time</Text>
                         </View>
                       )}
-                      {orderDetails.performanceMetrics.shoppingDuration && (
+                      {(orderDetails.performanceMetrics?.shoppingDuration ?? 0) > 0 && (
                         <View style={styles.metricCard}>
                           <Ionicons name="basket-outline" size={20} color="#6B7280" />
-                          <Text style={styles.metricValue}>{orderDetails.performanceMetrics.shoppingDuration} min</Text>
+                          <Text style={styles.metricValue}>{String(orderDetails.performanceMetrics?.shoppingDuration || 0)} min</Text>
                           <Text style={styles.metricLabel}>Shopping</Text>
                         </View>
                       )}
-                      {orderDetails.performanceMetrics.deliveryDuration && (
+                      {(orderDetails.performanceMetrics?.deliveryDuration ?? 0) > 0 && (
                         <View style={styles.metricCard}>
                           <Ionicons name="car-outline" size={20} color="#6B7280" />
-                          <Text style={styles.metricValue}>{orderDetails.performanceMetrics.deliveryDuration} min</Text>
+                          <Text style={styles.metricValue}>{String(orderDetails.performanceMetrics?.deliveryDuration || 0)} min</Text>
                           <Text style={styles.metricLabel}>Delivery</Text>
                         </View>
                       )}
+                    </View>
+                    
+                    {/* Enhanced Performance Metrics */}
+                    <Text style={styles.sectionTitle}>Milestone Metrics</Text>
+                    <View style={styles.metricsGrid}>
+                      {(orderDetails.performanceMetrics?.assignmentToAcceptanceTime ?? 0) > 0 && (
+                        <View style={styles.metricCard}>
+                          <Ionicons name="timer-outline" size={20} color="#8B5CF6" />
+                          <Text style={styles.metricValue}>{String(orderDetails.performanceMetrics?.assignmentToAcceptanceTime || 0)} min</Text>
+                          <Text style={styles.metricLabel}>Assignment → Acceptance</Text>
+                        </View>
+                      )}
+                      {(orderDetails.performanceMetrics?.acceptanceToShoppingTime ?? 0) > 0 && (
+                        <View style={styles.metricCard}>
+                          <Ionicons name="play-outline" size={20} color="#F59E0B" />
+                          <Text style={styles.metricValue}>{String(orderDetails.performanceMetrics?.acceptanceToShoppingTime || 0)} min</Text>
+                          <Text style={styles.metricLabel}>Acceptance → Shopping</Text>
+                        </View>
+                      )}
+                      {(orderDetails.performanceMetrics?.shoppingToDeliveryTime ?? 0) > 0 && (
+                        <View style={styles.metricCard}>
+                          <Ionicons name="arrow-forward-outline" size={20} color="#3B82F6" />
+                          <Text style={styles.metricValue}>{String(orderDetails.performanceMetrics?.shoppingToDeliveryTime || 0)} min</Text>
+                          <Text style={styles.metricLabel}>Shopping → Delivery</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                )}
+
+                {/* Receipt Section - Show if receipt exists */}
+                {orderDetails.receiptInfo && (
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Store Receipt</Text>
+                    <View style={styles.receiptContainer}>
+                      <View style={styles.receiptHeader}>
+                        <View style={styles.receiptInfo}>
+                          <Ionicons name="receipt-outline" size={20} color="#0F766E" />
+                          <View>
+                            <Text style={styles.receiptText}>Receipt uploaded by driver</Text>
+                            <Text style={styles.receiptTime}>
+                              {orderDetails.receiptInfo?.uploadedAgo || 'Recently uploaded'}
+                            </Text>
+                          </View>
+                        </View>
+                        <TouchableOpacity 
+                          style={styles.viewReceiptButton}
+                          onPress={openReceiptModal}
+                        >
+                          <Ionicons name="eye-outline" size={16} color="#0F766E" />
+                          <Text style={styles.viewReceiptText}>View Full Size</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <TouchableOpacity 
+                        style={styles.receiptImageContainer}
+                        onPress={openReceiptModal}
+                        activeOpacity={0.8}
+                      >
+                        <Image 
+                          source={{ uri: orderDetails.receiptInfo?.receiptUrl }} 
+                          style={styles.receiptImage}
+                          resizeMode="cover"
+                        />
+                        <View style={styles.receiptOverlay}>
+                          <Ionicons name="expand-outline" size={24} color="white" />
+                        </View>
+                      </TouchableOpacity>
                     </View>
                   </View>
                 )}
@@ -705,6 +870,41 @@ export default function AdminOrders() {
           </SafeAreaView>
         </Modal>
       </SafeAreaView>
+
+      {/* Receipt Full Size Modal - Outside of order details modal for proper layering */}
+      <Modal 
+        visible={receiptModalVisible} 
+        animationType="fade" 
+        presentationStyle="overFullScreen"
+        onRequestClose={closeReceiptModal}
+      >
+        <View style={styles.receiptModalContainer}>
+          <View style={styles.receiptModalHeader}>
+            <Text style={styles.receiptModalTitle}>Store Receipt</Text>
+            <TouchableOpacity 
+              onPress={closeReceiptModal} 
+              style={styles.receiptModalCloseButton}
+            >
+              <Ionicons name="close" size={24} color="white" />
+            </TouchableOpacity>
+          </View>
+          
+          {orderDetails?.receiptInfo && (
+            <View style={styles.receiptModalContent}>
+              <Image 
+                source={{ uri: orderDetails.receiptInfo?.receiptUrl }} 
+                style={styles.receiptModalImage}
+                resizeMode="contain"
+              />
+              <View style={styles.receiptModalInfo}>
+                <Text style={styles.receiptModalInfoText}>
+                  Uploaded {orderDetails.receiptInfo?.uploadedAgo || 'recently'} by {orderDetails.driver?.name || 'driver'}
+                </Text>
+              </View>
+            </View>
+          )}
+        </View>
+      </Modal>
     </>
   );
 }
@@ -1023,38 +1223,101 @@ const styles = StyleSheet.create({
     color: '#0F766E',
   },
   // Timeline styles
-  timelineCard: {
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    padding: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#0F766E',
+  timelineLoadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    gap: 8,
+  },
+  timelineLoadingText: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  timelineContainer: {
+    paddingVertical: 8,
   },
   timelineEventRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
+    marginBottom: 16,
+  },
+  timelineLeftColumn: {
+    alignItems: 'center',
+    marginRight: 12,
   },
   timelineEventIcon: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#ECFDF5',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  timelineLine: {
+    width: 2,
+    flex: 1,
+    backgroundColor: '#E5E7EB',
+    marginTop: 8,
+  },
+  timelineRightColumn: {
+    flex: 1,
+    paddingTop: 4,
   },
   timelineEventContent: {
-    flex: 1,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#E5E7EB',
   },
   timelineEventText: {
     fontSize: 15,
     fontWeight: '600',
     color: '#1F2937',
-    marginBottom: 4,
+    marginBottom: 8,
+  },
+  timelineEventMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
   },
   timelineEventTime: {
     fontSize: 12,
     color: '#6B7280',
+  },
+  timelineEventUser: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  userRoleBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  userRoleText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: 'white',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  timelineEventUserName: {
+    fontSize: 12,
+    color: '#374151',
+    fontWeight: '500',
+  },
+  emptyTimelineContainer: {
+    alignItems: 'center',
+    padding: 32,
+    gap: 8,
+  },
+  emptyTimelineText: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    textAlign: 'center',
   },
   // Metrics styles
   metricsGrid: {
@@ -1232,5 +1495,131 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 14,
     fontWeight: '600',
+  },
+  // Receipt display styles
+  receiptContainer: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  receiptHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  receiptInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  receiptText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  receiptTime: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  viewReceiptButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#0F766E',
+    backgroundColor: '#F0FDF4',
+  },
+  viewReceiptText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0F766E',
+  },
+  receiptImageContainer: {
+    position: 'relative',
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#F3F4F6',
+  },
+  receiptImage: {
+    width: '100%',
+    height: 200,
+    backgroundColor: '#F9FAFB',
+  },
+  receiptOverlay: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 20,
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  // Receipt modal styles
+  receiptModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+  },
+  receiptModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 60,
+    paddingBottom: 20,
+  },
+  receiptModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  receiptModalCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  receiptModalContent: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  receiptModalImage: {
+    width: '100%',
+    height: '80%',
+  },
+  receiptModalInfo: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  receiptModalInfoText: {
+    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.8)',
+    textAlign: 'center',
+  },
+  // Empty items styles
+  emptyItemsContainer: {
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyItemsText: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontStyle: 'italic',
   },
 }); 
