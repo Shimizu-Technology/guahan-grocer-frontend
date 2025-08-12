@@ -296,6 +296,9 @@ export const ordersAPI = {
   
   calculateDeliveryFee: (deliveryAddress: any) =>
     apiService.post('/orders/calculate_delivery_fee', { delivery_address: deliveryAddress }),
+  
+  getTimeline: (id: string) =>
+    apiService.get(`/orders/${id}/timeline`),
 };
 
 export const orderItemsAPI = {

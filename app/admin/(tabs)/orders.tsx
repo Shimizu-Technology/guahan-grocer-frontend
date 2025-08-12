@@ -451,6 +451,54 @@ export default function AdminOrders() {
                     ))}
                   </View>
                 </View>
+
+                {/* Order Timeline */}
+                {orderDetails.lastEvent && (
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Recent Activity</Text>
+                    <View style={styles.timelineCard}>
+                      <View style={styles.timelineEventRow}>
+                        <View style={styles.timelineEventIcon}>
+                          <Ionicons name="time-outline" size={16} color="#0F766E" />
+                        </View>
+                        <View style={styles.timelineEventContent}>
+                          <Text style={styles.timelineEventText}>{orderDetails.lastEvent.description}</Text>
+                          <Text style={styles.timelineEventTime}>{orderDetails.lastEvent.time_ago} by {orderDetails.lastEvent.user_name}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+                )}
+
+                {/* Performance Metrics for Completed Orders */}
+                {orderDetails.performanceMetrics && orderDetails.status === 'delivered' && (
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Performance Metrics</Text>
+                    <View style={styles.metricsGrid}>
+                      {orderDetails.performanceMetrics.totalProcessingTime && (
+                        <View style={styles.metricCard}>
+                          <Ionicons name="time-outline" size={20} color="#6B7280" />
+                          <Text style={styles.metricValue}>{orderDetails.performanceMetrics.totalProcessingTime} min</Text>
+                          <Text style={styles.metricLabel}>Total Time</Text>
+                        </View>
+                      )}
+                      {orderDetails.performanceMetrics.shoppingDuration && (
+                        <View style={styles.metricCard}>
+                          <Ionicons name="basket-outline" size={20} color="#6B7280" />
+                          <Text style={styles.metricValue}>{orderDetails.performanceMetrics.shoppingDuration} min</Text>
+                          <Text style={styles.metricLabel}>Shopping</Text>
+                        </View>
+                      )}
+                      {orderDetails.performanceMetrics.deliveryDuration && (
+                        <View style={styles.metricCard}>
+                          <Ionicons name="car-outline" size={20} color="#6B7280" />
+                          <Text style={styles.metricValue}>{orderDetails.performanceMetrics.deliveryDuration} min</Text>
+                          <Text style={styles.metricLabel}>Delivery</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                )}
               </ScrollView>
             ) : (
               <View style={styles.errorContainer}>
@@ -778,5 +826,67 @@ const styles = StyleSheet.create({
   },
   segmentButtonTextActive: {
     color: '#0F766E',
+  },
+  // Timeline styles
+  timelineCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#0F766E',
+  },
+  timelineEventRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  timelineEventIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#ECFDF5',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  timelineEventContent: {
+    flex: 1,
+  },
+  timelineEventText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  timelineEventTime: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  // Metrics styles
+  metricsGrid: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  metricCard: {
+    flex: 1,
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  metricValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  metricLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    textAlign: 'center',
   },
 }); 

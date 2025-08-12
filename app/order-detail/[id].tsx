@@ -52,6 +52,32 @@ interface Vehicle {
   fullDescription: string;
 }
 
+interface TimelineEvent {
+  id: string;
+  event_type: string;
+  description: string;
+  user: {
+    id: string;
+    name: string;
+    role: string;
+  } | null;
+  user_name: string;
+  occurred_at: string;
+  formatted_time: string;
+  time_ago: string;
+  data: any;
+}
+
+interface PerformanceMetrics {
+  total_processing_time?: number;
+  shopping_duration?: number;
+  delivery_duration?: number;
+  accepted_at?: string;
+  shopping_started_at?: string;
+  delivery_started_at?: string;
+  delivered_at?: string;
+}
+
 interface Order {
   id: string;
   status: string;
@@ -69,6 +95,19 @@ interface Order {
   items: OrderItem[];
   driver?: Driver;
   vehicle?: Vehicle;
+  // New timeline fields
+  lastEvent?: {
+    event_type: string;
+    description: string;
+    occurred_at: string;
+    time_ago: string;
+    user_name: string;
+  };
+  acceptedAt?: string;
+  shoppingStartedAt?: string;
+  deliveryStartedAt?: string;
+  deliveredAt?: string;
+  performanceMetrics?: PerformanceMetrics;
 }
 
 export default function OrderDetailScreen() {
@@ -78,6 +117,11 @@ export default function OrderDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Timeline state
+  const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
+  const [metrics, setMetrics] = useState<PerformanceMetrics | null>(null);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [showTimeline, setShowTimeline] = useState(false);
 
   // Add safety check for user
   console.log('🔍 OrderDetailScreen - User:', user);
@@ -198,6 +242,32 @@ export default function OrderDetailScreen() {
     }
   };
 
+  // Fetch timeline data
+  const fetchTimeline = async () => {
+    if (!id) return;
+    
+    try {
+      setTimelineLoading(true);
+      console.log('🔍 Fetching timeline for order:', id);
+      
+      const response = await ordersAPI.getTimeline(id as string);
+      
+      if (response.data) {
+        const timelineData = response.data as any;
+        console.log('✅ Timeline data received:', timelineData);
+        
+        setTimeline(timelineData.timeline || []);
+        setMetrics(timelineData.metrics || null);
+      } else {
+        console.error('❌ Failed to fetch timeline:', response.error);
+      }
+    } catch (err: any) {
+      console.error('❌ Timeline fetch error:', err);
+    } finally {
+      setTimelineLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchOrder();
   }, [id]);
@@ -205,6 +275,9 @@ export default function OrderDetailScreen() {
   const onRefresh = () => {
     setRefreshing(true);
     fetchOrder(false);
+    if (showTimeline) {
+      fetchTimeline();
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -343,6 +416,139 @@ export default function OrderDetailScreen() {
             </React.Fragment>
           );
         })}
+      </View>
+    );
+  };
+
+  const getEventIcon = (eventType: string) => {
+    switch (eventType) {
+      case 'created':
+        return 'receipt-outline';
+      case 'assigned':
+        return 'person-add-outline';
+      case 'accepted':
+        return 'checkmark-circle-outline';
+      case 'shopping_started':
+        return 'basket-outline';
+      case 'item_found':
+        return 'search-outline';
+      case 'item_substituted':
+        return 'swap-horizontal-outline';
+      case 'item_unavailable':
+        return 'close-circle-outline';
+      case 'shopping_completed':
+        return 'bag-check-outline';
+      case 'delivery_started':
+        return 'car-outline';
+      case 'delivered':
+        return 'home-outline';
+      case 'cancelled':
+        return 'ban-outline';
+      default:
+        return 'ellipsis-horizontal-outline';
+    }
+  };
+
+  const getEventColor = (eventType: string) => {
+    switch (eventType) {
+      case 'created':
+        return '#3B82F6';
+      case 'assigned':
+      case 'accepted':
+        return '#059669';
+      case 'shopping_started':
+      case 'item_found':
+        return '#F59E0B';
+      case 'item_substituted':
+        return '#8B5CF6';
+      case 'item_unavailable':
+        return '#DC2626';
+      case 'shopping_completed':
+      case 'delivery_started':
+        return '#0F766E';
+      case 'delivered':
+        return '#059669';
+      case 'cancelled':
+        return '#DC2626';
+      default:
+        return '#6B7280';
+    }
+  };
+
+  const renderTimeline = () => {
+    if (timeline.length === 0) {
+      return (
+        <View style={styles.timelineEmpty}>
+          <Ionicons name="time-outline" size={24} color="#9CA3AF" />
+          <Text style={styles.timelineEmptyText}>No timeline events available</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.timelineContainer}>
+        {timeline.map((event, index) => {
+          const isLast = index === timeline.length - 1;
+          const eventColor = getEventColor(event.event_type);
+          
+          return (
+            <View key={event.id} style={styles.timelineEvent}>
+              <View style={styles.timelineEventLeft}>
+                <View style={[styles.timelineIcon, { backgroundColor: eventColor }]}>
+                  <Ionicons 
+                    name={getEventIcon(event.event_type) as any} 
+                    size={16} 
+                    color="white" 
+                  />
+                </View>
+                {!isLast && <View style={styles.timelineLine} />}
+              </View>
+              
+              <View style={styles.timelineEventContent}>
+                <View style={styles.timelineEventHeader}>
+                  <Text style={styles.timelineEventTitle}>{event.description}</Text>
+                  <Text style={styles.timelineEventTime}>{event.time_ago}</Text>
+                </View>
+                
+                <View style={styles.timelineEventMeta}>
+                  <Text style={styles.timelineEventUser}>by {event.user_name}</Text>
+                  <Text style={styles.timelineEventDate}>{event.formatted_time}</Text>
+                </View>
+              </View>
+            </View>
+          );
+        })}
+        
+        {/* Performance Metrics */}
+        {metrics && Object.keys(metrics).length > 0 && (
+          <View style={styles.metricsContainer}>
+            <Text style={styles.metricsTitle}>Performance Metrics</Text>
+            
+            {metrics.total_processing_time && (
+              <View style={styles.metricRow}>
+                <Ionicons name="time-outline" size={16} color="#6B7280" />
+                <Text style={styles.metricLabel}>Total Time:</Text>
+                <Text style={styles.metricValue}>{metrics.total_processing_time} min</Text>
+              </View>
+            )}
+            
+            {metrics.shopping_duration && (
+              <View style={styles.metricRow}>
+                <Ionicons name="basket-outline" size={16} color="#6B7280" />
+                <Text style={styles.metricLabel}>Shopping:</Text>
+                <Text style={styles.metricValue}>{metrics.shopping_duration} min</Text>
+              </View>
+            )}
+            
+            {metrics.delivery_duration && (
+              <View style={styles.metricRow}>
+                <Ionicons name="car-outline" size={16} color="#6B7280" />
+                <Text style={styles.metricLabel}>Delivery:</Text>
+                <Text style={styles.metricValue}>{metrics.delivery_duration} min</Text>
+              </View>
+            )}
+          </View>
+        )}
       </View>
     );
   };
@@ -501,9 +707,41 @@ export default function OrderDetailScreen() {
           {/* Progress Tracking */}
           {order.status !== 'cancelled' && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Order Progress</Text>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Order Progress</Text>
+                <TouchableOpacity 
+                  style={styles.timelineToggle}
+                  onPress={() => {
+                    if (!showTimeline && timeline.length === 0) {
+                      fetchTimeline();
+                    }
+                    setShowTimeline(!showTimeline);
+                  }}
+                >
+                  <Ionicons 
+                    name={showTimeline ? "list-outline" : "time-outline"} 
+                    size={20} 
+                    color="#0F766E" 
+                  />
+                  <Text style={styles.timelineToggleText}>
+                    {showTimeline ? "Simple View" : "Timeline"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              
               <View style={styles.progressCard}>
-                {renderProgressSteps()}
+                {showTimeline ? (
+                  timelineLoading ? (
+                    <View style={styles.timelineLoading}>
+                      <ActivityIndicator size="small" color="#0F766E" />
+                      <Text style={styles.timelineLoadingText}>Loading timeline...</Text>
+                    </View>
+                  ) : (
+                    renderTimeline()
+                  )
+                ) : (
+                  renderProgressSteps()
+                )}
               </View>
             </View>
           )}
@@ -989,5 +1227,136 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 1,
     borderColor: '#D1D5DB',
+  },
+  // Timeline styles
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  timelineToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#D1FAE5',
+  },
+  timelineToggleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0F766E',
+  },
+  timelineLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 20,
+  },
+  timelineLoadingText: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  timelineContainer: {
+    gap: 0,
+  },
+  timelineEvent: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingBottom: 16,
+  },
+  timelineEventLeft: {
+    alignItems: 'center',
+    width: 32,
+  },
+  timelineIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  timelineLine: {
+    width: 2,
+    flex: 1,
+    backgroundColor: '#E5E7EB',
+    marginTop: 8,
+  },
+  timelineEventContent: {
+    flex: 1,
+    paddingBottom: 4,
+  },
+  timelineEventHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 4,
+  },
+  timelineEventTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1F2937',
+    flex: 1,
+    marginRight: 8,
+  },
+  timelineEventTime: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    fontWeight: '500',
+  },
+  timelineEventMeta: {
+    gap: 2,
+  },
+  timelineEventUser: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  timelineEventDate: {
+    fontSize: 12,
+    color: '#9CA3AF',
+  },
+  timelineEmpty: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    gap: 8,
+  },
+  timelineEmptyText: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    textAlign: 'center',
+  },
+  metricsContainer: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    gap: 8,
+  },
+  metricsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 8,
+  },
+  metricRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  metricLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+    flex: 1,
+  },
+  metricValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
   },
 }); 
