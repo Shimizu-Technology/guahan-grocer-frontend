@@ -39,6 +39,10 @@ export default function CatalogScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const previousCategoryParam = useRef<string | null>(null);
+  
+  // Quantity selection state
+  const [selectedWeight, setSelectedWeight] = useState(0.5); // Start at 0.5 lb
+  const [selectedQuantity, setSelectedQuantity] = useState(1);
 
   // Fetch products from API
   const fetchProducts = async (showLoading = true) => {
@@ -61,6 +65,14 @@ export default function CatalogScreen() {
           trackInventory: product.trackInventory,
           stockStatus: product.stockStatus,
           imageUrl: product.imageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300', // Fallback image
+          // Weight-based fields
+          weightBased: product.weightBased,
+          pricePerUnit: product.pricePerUnit ? parseFloat(product.pricePerUnit) : undefined,
+          weightUnit: product.weightUnit,
+          minWeight: product.minWeight ? parseFloat(product.minWeight) : undefined,
+          maxWeight: product.maxWeight ? parseFloat(product.maxWeight) : undefined,
+          weightRange: product.weightRange,
+          priceInfo: product.priceInfo,
         }));
         setProducts(formattedProducts);
       } else {
@@ -158,7 +170,30 @@ export default function CatalogScreen() {
       return;
     }
     
-    addItem(item, 1);
+    // Validate input based on item type
+    if (item.weightBased) {
+      const weight = selectedWeight;
+      if (weight <= 0) {
+        Alert.alert('Invalid Weight', 'Please select a valid weight amount.');
+        return;
+      }
+      
+      // Check weight range if specified
+      if (item.minWeight && weight < item.minWeight) {
+        Alert.alert('Weight Too Low', `Minimum weight is ${item.minWeight} ${item.weightUnit}.`);
+        return;
+      }
+      if (item.maxWeight && weight > item.maxWeight) {
+        Alert.alert('Weight Too High', `Maximum weight is ${item.maxWeight} ${item.weightUnit}.`);
+        return;
+      }
+      
+      // Add weight-based item with selected weight as quantity
+      addItem(item, weight);
+    } else {
+      // Add unit-based item with selected quantity
+      addItem(item, selectedQuantity);
+    }
   };
 
   const handleToggleFavorite = async (item: Item) => {
@@ -191,11 +226,19 @@ export default function CatalogScreen() {
   const openModal = (item: Item) => {
     setSelectedItem(item);
     setModalVisible(true);
+    // Reset quantity/weight when opening modal
+    if (item.weightBased) {
+      setSelectedWeight(0.5); // Start at 0.5 lb
+    } else {
+      setSelectedQuantity(1);
+    }
   };
 
   const closeModal = () => {
     setModalVisible(false);
     setSelectedItem(null);
+    setSelectedWeight(0.5);
+    setSelectedQuantity(1);
   };
 
   // Loading state
@@ -253,16 +296,45 @@ export default function CatalogScreen() {
       <View style={styles.itemInfo}>
         <View style={styles.itemTextContent}>
           <Text style={styles.itemName} numberOfLines={2} ellipsizeMode="tail">{item.name}</Text>
-          <Text style={styles.itemPrice}>${item.price.toFixed(2)}</Text>
-          <Text style={styles.itemUnit}>per {item.unit}</Text>
+          
+          {/* Simplified pricing display */}
+          <View style={styles.pricingContainer}>
+            <Text style={styles.itemPrice}>
+              ${item.weightBased 
+                ? (item.pricePerUnit?.toFixed(2) || item.price.toFixed(2))
+                : item.price.toFixed(2)
+              }
+            </Text>
+            <Text style={styles.itemUnit}>
+              per {item.weightBased 
+                ? (item.weightUnit || item.unit)
+                : item.unit
+              }
+            </Text>
+          </View>
         </View>
         
         <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => handleAddToCart(item)}
+          style={[
+            styles.addButton,
+            item.weightBased && styles.addButtonWeightBased
+          ]}
+          onPress={() => {
+            if (item.weightBased) {
+              openModal(item); // Open modal for weight selection
+            } else {
+              handleAddToCart(item); // Direct add for unit items
+            }
+          }}
         >
-          <Ionicons name="add" size={16} color="white" />
-          <Text style={styles.addButtonText}>Add to Cart</Text>
+          <Ionicons 
+            name={item.weightBased ? "scale" : "add"} 
+            size={16} 
+            color="white" 
+          />
+          <Text style={styles.addButtonText}>
+            {item.weightBased ? "Select Weight" : "Add to Cart"}
+          </Text>
         </TouchableOpacity>
       </View>
     </TouchableOpacity>
@@ -368,9 +440,20 @@ export default function CatalogScreen() {
                 <View style={styles.modalInfo}>
                   <Text style={styles.modalTitle}>{selectedItem.name}</Text>
                   
+                  {/* Simplified pricing display */}
                   <View style={styles.modalPriceRow}>
-                    <Text style={styles.modalPrice}>${selectedItem.price.toFixed(2)}</Text>
-                    <Text style={styles.modalUnit}>per {selectedItem.unit}</Text>
+                    <Text style={styles.modalPrice}>
+                      ${selectedItem.weightBased 
+                        ? (selectedItem.pricePerUnit?.toFixed(2) || selectedItem.price.toFixed(2))
+                        : selectedItem.price.toFixed(2)
+                      }
+                    </Text>
+                    <Text style={styles.modalUnit}>
+                      per {selectedItem.weightBased 
+                        ? (selectedItem.weightUnit || selectedItem.unit)
+                        : selectedItem.unit
+                      }
+                    </Text>
                   </View>
                   
                   <View style={styles.modalCategory}>
@@ -393,6 +476,76 @@ export default function CatalogScreen() {
                       {selectedItem.inStock ? "In Stock" : "Out of Stock"}
                     </Text>
                   </View>
+                  
+                  {/* Quantity Selection */}
+                  {selectedItem.inStock && (
+                    <View style={styles.quantitySection}>
+                      {selectedItem.weightBased ? (
+                        // Weight stepper for weight-based items (0.5 lb intervals)
+                        <View style={styles.weightStepperContainer}>
+                          <Text style={styles.quantityLabel}>
+                            Weight ({selectedItem.weightUnit || 'lbs'})
+                          </Text>
+                          <View style={styles.quantityControls}>
+                            <TouchableOpacity
+                              style={[styles.quantityButton, selectedWeight <= 0.5 && styles.quantityButtonDisabled]}
+                              onPress={() => setSelectedWeight(Math.max(0.5, selectedWeight - 0.5))}
+                              disabled={selectedWeight <= 0.5}
+                            >
+                              <Ionicons name="remove" size={18} color={selectedWeight <= 0.5 ? "#9CA3AF" : "#0F766E"} />
+                            </TouchableOpacity>
+                            
+                            <View style={styles.quantityDisplay}>
+                              <Text style={styles.quantityText}>{selectedWeight.toFixed(1)}</Text>
+                              <Text style={styles.quantityUnit}>{selectedItem.weightUnit || 'lbs'}</Text>
+                            </View>
+                            
+                            <TouchableOpacity
+                              style={[styles.quantityButton, selectedWeight >= 10 && styles.quantityButtonDisabled]}
+                              onPress={() => setSelectedWeight(Math.min(10, selectedWeight + 0.5))}
+                              disabled={selectedWeight >= 10}
+                            >
+                              <Ionicons name="add" size={18} color={selectedWeight >= 10 ? "#9CA3AF" : "#0F766E"} />
+                            </TouchableOpacity>
+                          </View>
+                          <Text style={styles.estimatedPrice}>
+                            Estimated: ${((selectedItem.pricePerUnit || 0) * selectedWeight).toFixed(2)}
+                          </Text>
+                        </View>
+                      ) : (
+                        // Quantity stepper for unit-based items
+                        <View style={styles.quantityContainer}>
+                          <Text style={styles.quantityLabel}>
+                            Quantity
+                          </Text>
+                          <View style={styles.quantityControls}>
+                            <TouchableOpacity
+                              style={[styles.quantityButton, selectedQuantity <= 1 && styles.quantityButtonDisabled]}
+                              onPress={() => setSelectedQuantity(Math.max(1, selectedQuantity - 1))}
+                              disabled={selectedQuantity <= 1}
+                            >
+                              <Ionicons name="remove" size={18} color={selectedQuantity <= 1 ? "#9CA3AF" : "#0F766E"} />
+                            </TouchableOpacity>
+                            
+                            <View style={styles.quantityDisplay}>
+                              <Text style={styles.quantityText}>{selectedQuantity}</Text>
+                              <Text style={styles.quantityUnit}>{selectedItem.unit}</Text>
+                            </View>
+                            
+                            <TouchableOpacity
+                              style={styles.quantityButton}
+                              onPress={() => setSelectedQuantity(selectedQuantity + 1)}
+                            >
+                              <Ionicons name="add" size={18} color="#0F766E" />
+                            </TouchableOpacity>
+                          </View>
+                          <Text style={styles.totalPrice}>
+                            Total: ${(selectedItem.price * selectedQuantity).toFixed(2)}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
                   
                   <View style={styles.modalActions}>
                     <TouchableOpacity
@@ -420,7 +573,12 @@ export default function CatalogScreen() {
                       disabled={!selectedItem.inStock}
                     >
                       <Ionicons name="add" size={20} color="white" />
-                      <Text style={styles.modalAddButtonText}>Add to Cart</Text>
+                      <Text style={styles.modalAddButtonText}>
+                        {selectedItem.weightBased 
+                          ? `Add ${selectedWeight.toFixed(1)} ${selectedItem.weightUnit || 'lbs'}`
+                          : `Add ${selectedQuantity} to Cart`
+                        }
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -751,5 +909,141 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  // Simplified pricing styles
+  pricingContainer: {
+    alignItems: 'flex-start',
+  },
+  weightRange: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
+  weightBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginTop: 4,
+    gap: 3,
+  },
+  weightBadgeText: {
+    fontSize: 10,
+    color: '#0F766E',
+    fontWeight: '500',
+  },
+  addButtonWeightBased: {
+    backgroundColor: '#0F766E',
+  },
+  // Modal weight-based pricing styles
+  modalWeightBasedPricing: {
+    marginBottom: 16,
+  },
+  modalWeightRange: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 6,
+  },
+  modalWeightRangeText: {
+    fontSize: 14,
+    color: '#0F766E',
+    fontWeight: '500',
+  },
+  modalWeightBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 8,
+    gap: 4,
+    alignSelf: 'flex-start',
+  },
+  modalWeightBadgeText: {
+    fontSize: 12,
+    color: '#0F766E',
+    fontWeight: '600',
+  },
+  modalWeightExplanation: {
+    backgroundColor: '#F0F9FF',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#0284C7',
+  },
+  modalWeightExplanationText: {
+    fontSize: 12,
+    color: '#0369A1',
+    lineHeight: 16,
+    fontStyle: 'italic',
+  },
+  // Quantity selection styles
+  quantitySection: {
+    marginTop: 16,
+    marginBottom: 16,
+  },
+  quantityLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 8,
+  },
+  // Weight stepper styles (replaces weight input)
+  weightStepperContainer: {
+    gap: 8,
+  },
+  estimatedPrice: {
+    fontSize: 14,
+    color: '#0F766E',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  // Quantity stepper styles
+  quantityContainer: {
+    gap: 8,
+  },
+  quantityControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  quantityButton: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  quantityButtonDisabled: {
+    backgroundColor: '#F3F4F6',
+    borderColor: '#D1D5DB',
+  },
+  quantityDisplay: {
+    alignItems: 'center',
+    minWidth: 80,
+  },
+  quantityText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  quantityUnit: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  totalPrice: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#0F766E',
+    textAlign: 'center',
   },
 }); 

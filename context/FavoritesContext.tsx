@@ -93,6 +93,13 @@ export const FavoritesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           description: favorite.product.description,
           inStock: favorite.product.inStock,
           imageUrl: favorite.product.imageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300',
+          // Add weight-based properties
+          weightBased: favorite.product.weightBased || false,
+          pricePerUnit: favorite.product.pricePerUnit ? parseFloat(favorite.product.pricePerUnit) : undefined,
+          weightUnit: favorite.product.weightUnit,
+          minWeight: favorite.product.minWeight ? parseFloat(favorite.product.minWeight) : undefined,
+          maxWeight: favorite.product.maxWeight ? parseFloat(favorite.product.maxWeight) : undefined,
+          weightRange: favorite.product.weightRange,
         }));
         
         setFavorites(backendFavorites);

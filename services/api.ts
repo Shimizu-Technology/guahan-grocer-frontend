@@ -246,6 +246,9 @@ export const productsAPI = {
 
   update: (id: string, formData: FormData) =>
     apiService.putFormData(`/products/${id}`, formData),
+  
+  getWeightInfo: (id: string) =>
+    apiService.get(`/products/${id}/weight_info`, false),
 };
 
 export const favoritesAPI = {
@@ -461,6 +464,77 @@ export const vehiclesAPI = {
   
   delete: (id: string) => 
     apiService.delete(`/vehicles/${id}`),
+};
+
+// Weight variance API
+export const weightVarianceAPI = {
+  updateItemWeight: (orderId: string, itemId: string, weight: number, note?: string) =>
+    apiService.put(`/orders/${orderId}/items/${itemId}/weight`, { 
+      weight, 
+      note 
+    }),
+  
+  approveVariance: (orderId: string, itemId: string) =>
+    apiService.post(`/orders/${orderId}/items/${itemId}/approve_variance`),
+  
+  rejectVariance: (orderId: string, itemId: string) =>
+    apiService.post(`/orders/${orderId}/items/${itemId}/reject_variance`),
+};
+
+// User preferences API
+export const userPreferencesAPI = {
+  get: (userId: string) =>
+    apiService.get(`/users/${userId}/preferences`),
+  
+  update: (userId: string, preferences: any) =>
+    apiService.put(`/users/${userId}/preferences`, { preferences }),
+  
+  getVarianceSettings: (userId: string) =>
+    apiService.get(`/users/${userId}/preferences/variance_settings`),
+};
+
+// Payment processing API
+export const paymentsAPI = {
+  authorize: (orderId: string, bufferPercentage?: number) =>
+    apiService.post(`/orders/${orderId}/payments/authorize`, { 
+      buffer_percentage: bufferPercentage 
+    }),
+  
+  capture: (orderId: string) =>
+    apiService.post(`/orders/${orderId}/payments/capture`),
+  
+  cancel: (orderId: string) =>
+    apiService.post(`/orders/${orderId}/payments/cancel`),
+  
+  getStatus: (orderId: string) =>
+    apiService.get(`/orders/${orderId}/payments/status`),
+  
+  processVarianceRefund: (orderId: string, amount: number, reason?: string) =>
+    apiService.post(`/orders/${orderId}/payments/variance_refund`, { 
+      amount, 
+      reason 
+    }),
+  
+  getServiceStatus: () =>
+    apiService.get('/payments/service_status'),
+  
+  calculatePreAuth: (orderTotal: number, bufferPercentage?: number) =>
+    apiService.post('/payments/calculate_pre_auth', { 
+      order_total: orderTotal, 
+      buffer_percentage: bufferPercentage 
+    }),
+};
+
+// Stripe API endpoints
+export const stripeAPI = {
+  createPaymentIntent: (amount: string, currency: string = 'USD') =>
+    apiService.post('/stripe/create_intent', { amount, currency }),
+  
+  getPaymentIntent: (id: string) =>
+    apiService.get(`/stripe/payment_intent/${id}`),
+  
+  confirmPaymentIntent: (paymentIntentId: string) =>
+    apiService.post('/stripe/confirm_intent', { payment_intent_id: paymentIntentId }),
 };
 
 export default apiService; 

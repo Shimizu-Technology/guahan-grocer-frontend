@@ -14,11 +14,13 @@ import { router } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { useFavorites } from '../../context/FavoritesContext';
+import { useNotifications } from '../../context/NotificationContext';
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
   const { itemCount, total } = useCart();
   const { favoritesCount } = useFavorites();
+  const { unreadCount } = useNotifications();
 
   // Show login prompt for guests
   if (!user) {
@@ -70,6 +72,12 @@ export default function ProfileScreen() {
       label: 'Cart Total',
       value: `$${total.toFixed(2)}`,
       color: '#8B5CF6'
+    },
+    {
+      icon: 'notifications-outline',
+      label: 'Notifications',
+      value: unreadCount.toString(),
+      color: '#F59E0B'
     }
   ];
 
@@ -93,6 +101,12 @@ export default function ProfileScreen() {
       onPress: () => Alert.alert('Feature Coming Soon', 'Payment methods will be available soon!')
     },
     {
+      icon: 'scale-outline',
+      label: 'Weight Preferences',
+      subtitle: 'Auto-approval settings for weight variances',
+      onPress: () => router.push('/weight-preferences')
+    },
+    {
       icon: 'receipt-outline',
       label: 'Order History',
       subtitle: 'View past orders',
@@ -101,8 +115,8 @@ export default function ProfileScreen() {
     {
       icon: 'notifications-outline',
       label: 'Notifications',
-      subtitle: 'Notification preferences',
-      onPress: () => Alert.alert('Feature Coming Soon', 'Notification settings will be available soon!')
+      subtitle: `${unreadCount} unread notifications`,
+      onPress: () => router.push('/notifications')
     },
     {
       icon: 'help-circle-outline',

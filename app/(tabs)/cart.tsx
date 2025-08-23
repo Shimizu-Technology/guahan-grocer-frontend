@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
-  Image,
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,13 +18,35 @@ import SimpleImage from '../../components/shared/SimpleImage';
 
 export default function CartScreen() {
   const { user } = useAuth();
-  const { items, total, updateQuantity, removeItem, clearCart } = useCart();
+  const { items, total, updateQuantity, removeItem, clearCart, updateWeight } = useCart();
+  
+  // No longer need weight modal state - using inline steppers
 
   const handleQuantityChange = (itemId: string, change: number) => {
     const item = items.find(item => item.item.id === itemId);
     if (item) {
       const newQuantity = item.quantity + change;
       updateQuantity(itemId, newQuantity);
+    }
+  };
+
+  const handleWeightChange = (itemId: string, change: number) => {
+    const item = items.find(item => item.item.id === itemId);
+    if (item && item.item.weightBased) {
+      const currentWeight = item.selectedWeight || 0.5; // Default to 0.5 if no weight selected
+      const newWeight = Math.max(0.5, currentWeight + change); // Minimum 0.5 lb
+      
+      // Check weight limits
+      if (item.item.minWeight && newWeight < item.item.minWeight) {
+        Alert.alert('Weight Too Low', `Minimum weight is ${item.item.minWeight} ${item.item.weightUnit}`);
+        return;
+      }
+      if (item.item.maxWeight && newWeight > item.item.maxWeight) {
+        Alert.alert('Weight Too High', `Maximum weight is ${item.item.maxWeight} ${item.item.weightUnit}`);
+        return;
+      }
+      
+      updateWeight(itemId, newWeight);
     }
   };
 
@@ -49,6 +70,21 @@ export default function CartScreen() {
         { text: 'Clear', style: 'destructive', onPress: clearCart }
       ]
     );
+  };
+
+  // Weight modal functions removed - using inline steppers now
+
+  const calculateEstimatedPrice = (item: CartItem): number => {
+    if (!item.item.weightBased) {
+      return item.item.price * item.quantity;
+    }
+    
+    if (item.selectedWeight && item.item.pricePerUnit) {
+      return item.item.pricePerUnit * item.selectedWeight * item.quantity;
+    }
+    
+    // Fallback to base price if weight not selected
+    return item.item.price * item.quantity;
   };
 
   const handleCheckout = () => {
@@ -82,25 +118,76 @@ export default function CartScreen() {
       
       <View style={styles.itemInfo}>
         <Text style={styles.itemName}>{item.item.name}</Text>
-        <Text style={styles.itemPrice}>${item.item.price.toFixed(2)} per {item.item.unit}</Text>
         
-        <View style={styles.quantityContainer}>
-          <TouchableOpacity
-            style={styles.quantityButton}
-            onPress={() => handleQuantityChange(item.item.id, -1)}
-          >
-            <Ionicons name="remove" size={16} color="#0F766E" />
-          </TouchableOpacity>
-          
-          <Text style={styles.quantity}>{item.quantity}</Text>
-          
-          <TouchableOpacity
-            style={styles.quantityButton}
-            onPress={() => handleQuantityChange(item.item.id, 1)}
-          >
-            <Ionicons name="add" size={16} color="#0F766E" />
-          </TouchableOpacity>
-        </View>
+        {/* Weight-based pricing display */}
+        {item.item.weightBased ? (
+          <View style={styles.weightBasedInfo}>
+            <View style={styles.priceRow}>
+              <Text style={styles.itemPrice}>
+                ${item.item.pricePerUnit?.toFixed(2) || item.item.price.toFixed(2)} per {item.item.weightUnit || item.item.unit}
+              </Text>
+              <View style={styles.weightBadge}>
+                <Ionicons name="scale-outline" size={10} color="#0F766E" />
+                <Text style={styles.weightBadgeText}>Weight-based</Text>
+              </View>
+            </View>
+            
+            <View style={styles.selectedWeightInfo}>
+              <Text style={styles.selectedWeightText}>
+                Weight: {item.selectedWeight || 0.5} {item.item.weightUnit}
+              </Text>
+              <Text style={styles.estimatedPriceText}>
+                Estimated: ${item.estimatedPrice?.toFixed(2) || (item.item.pricePerUnit! * (item.selectedWeight || 0.5)).toFixed(2)}
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <Text style={styles.itemPrice}>${item.item.price.toFixed(2)} per {item.item.unit}</Text>
+        )}
+        
+        {/* Quantity/Weight Controls */}
+        {item.item.weightBased ? (
+          <View style={styles.weightContainer}>
+            <Text style={styles.weightLabel}>Weight ({item.item.weightUnit})</Text>
+            <View style={styles.weightStepperContainer}>
+              <TouchableOpacity
+                style={styles.weightStepperButton}
+                onPress={() => handleWeightChange(item.item.id, -0.5)}
+              >
+                <Ionicons name="remove" size={16} color="#0F766E" />
+              </TouchableOpacity>
+              
+              <Text style={styles.weightValue}>
+                {(item.selectedWeight || 0.5).toFixed(1)}
+              </Text>
+              
+              <TouchableOpacity
+                style={styles.weightStepperButton}
+                onPress={() => handleWeightChange(item.item.id, 0.5)}
+              >
+                <Ionicons name="add" size={16} color="#0F766E" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.quantityContainer}>
+            <TouchableOpacity
+              style={styles.quantityButton}
+              onPress={() => handleQuantityChange(item.item.id, -1)}
+            >
+              <Ionicons name="remove" size={16} color="#0F766E" />
+            </TouchableOpacity>
+            
+            <Text style={styles.quantity}>{item.quantity}</Text>
+            
+            <TouchableOpacity
+              style={styles.quantityButton}
+              onPress={() => handleQuantityChange(item.item.id, 1)}
+            >
+              <Ionicons name="add" size={16} color="#0F766E" />
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
       
       <View style={styles.itemRight}>
@@ -112,7 +199,7 @@ export default function CartScreen() {
         </TouchableOpacity>
         
         <Text style={styles.itemTotal}>
-          ${(item.item.price * item.quantity).toFixed(2)}
+          ${calculateEstimatedPrice(item).toFixed(2)}
         </Text>
       </View>
     </View>
@@ -180,6 +267,8 @@ export default function CartScreen() {
           <Ionicons name="arrow-forward" size={20} color="white" />
         </TouchableOpacity>
       </View>
+
+      {/* Weight modal removed - using inline steppers */}
     </SafeAreaView>
   );
 }
@@ -268,6 +357,38 @@ const styles = StyleSheet.create({
     minWidth: 30,
     textAlign: 'center',
   },
+  // Weight stepper styles
+  weightContainer: {
+    marginTop: 8,
+  },
+  weightLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  weightStepperContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  weightStepperButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#0F766E',
+  },
+  weightValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginHorizontal: 12,
+    minWidth: 40,
+    textAlign: 'center',
+  },
   itemRight: {
     alignItems: 'flex-end',
     justifyContent: 'space-between',
@@ -354,4 +475,45 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  // Weight-based cart item styles
+  weightBasedInfo: {
+    marginBottom: 8,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  weightBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 6,
+    gap: 2,
+  },
+  weightBadgeText: {
+    fontSize: 9,
+    color: '#0F766E',
+    fontWeight: '500',
+  },
+  selectedWeightInfo: {
+    backgroundColor: '#F0F9FF',
+    padding: 8,
+    borderRadius: 8,
+    marginVertical: 4,
+  },
+  selectedWeightText: {
+    fontSize: 13,
+    color: '#0369A1',
+    fontWeight: '600',
+  },
+  estimatedPriceText: {
+    fontSize: 12,
+    color: '#0284C7',
+    marginTop: 2,
+  },
+  // Removed modal-related styles - using inline steppers now
 }); 

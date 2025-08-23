@@ -10,6 +10,7 @@ import { useColorScheme } from '@/components/useColorScheme';
 import { AuthProvider } from '../context/AuthContext';
 import { CartProvider } from '../context/CartContext';
 import { FavoritesProvider } from '../context/FavoritesContext';
+import { NotificationProvider } from '../context/NotificationContext';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -47,11 +48,13 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <CartProvider>
-        <FavoritesProvider>
-          <RootLayoutNav />
-        </FavoritesProvider>
-      </CartProvider>
+      <NotificationProvider>
+        <CartProvider>
+          <FavoritesProvider>
+            <RootLayoutNav />
+          </FavoritesProvider>
+        </CartProvider>
+      </NotificationProvider>
     </AuthProvider>
   );
 }

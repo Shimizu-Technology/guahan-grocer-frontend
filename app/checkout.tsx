@@ -16,7 +16,7 @@ import { router, Stack } from 'expo-router';
 
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
-import { ordersAPI, addressesAPI } from '../services/api';
+import { ordersAPI, addressesAPI, paymentsAPI } from '../services/api';
 import { locationService, LocationResult } from '../services/locationService';
 import { Address } from '../types';
 
@@ -337,7 +337,11 @@ export default function CheckoutScreen() {
         items: items.map(item => ({
           itemId: item.item.id,
           quantity: item.quantity,
-          price: item.item.price
+          price: item.item.price,
+          // Include weight information for weight-based items
+          selectedWeight: item.selectedWeight,
+          estimatedPrice: item.estimatedPrice,
+          weightNote: item.weightNote
         }))
       };
 
@@ -345,32 +349,131 @@ export default function CheckoutScreen() {
       const response = await ordersAPI.create(orderData);
       
       if (response.data) {
-        const orderData = response.data as any;
+        const createdOrder = response.data as any;
+        console.log('✅ Order created successfully:', createdOrder);
         
-        console.log('✅ Order created successfully:', orderData);
-        console.log('📍 Navigating to confirmation with:', {
-          orderId: orderData.id || 'NEW',
-          orderTotal: finalTotal.toFixed(2)
-        });
-        
-        // Navigate immediately to confirmation screen
-        // Cart will be cleared from the confirmation screen to avoid React warnings
+        // Authorize payment for the order
         try {
-          router.replace({
-            pathname: '/order-confirmation',
-            params: {
-              orderId: orderData.id || 'NEW',
-              orderTotal: finalTotal.toFixed(2)
+          console.log('💳 Authorizing payment for order:', createdOrder.id);
+          const paymentResponse = await paymentsAPI.authorize(createdOrder.id, 25); // 25% buffer for weight variances
+          
+          if (paymentResponse.data) {
+            console.log('✅ Payment authorized:', paymentResponse.data);
+            
+            // Navigate to confirmation screen
+            try {
+              const paymentData = paymentResponse.data as any;
+              router.replace({
+                pathname: '/order-confirmation',
+                params: {
+                  orderId: createdOrder.id || 'NEW',
+                  orderTotal: finalTotal.toFixed(2),
+                  paymentAuthorized: 'true',
+                  preAuthAmount: paymentData.pre_auth_amount?.toString() || finalTotal.toFixed(2)
+                }
+              });
+              console.log('📱 Navigation completed with payment info');
+            } catch (navError) {
+              console.error('❌ Navigation failed:', navError);
+              // Fallback to simple navigation
+              router.replace('/order-confirmation');
             }
-          });
-          console.log('📱 Navigation completed');
-        } catch (navError) {
-          console.error('❌ Navigation failed:', navError);
-          // Fallback to simple navigation
-          router.replace('/order-confirmation');
+          } else {
+            // Payment authorization failed, but order was created
+            console.error('❌ Payment authorization failed:', paymentResponse.error);
+            
+            // Attempt to cancel the order to maintain consistency
+            try {
+              console.log('🔄 Attempting to cancel order due to payment failure...');
+              await ordersAPI.updateStatus(createdOrder.id, 'cancelled');
+              console.log('✅ Order cancelled successfully');
+              
+              Alert.alert(
+                'Payment Authorization Failed',
+                'We were unable to authorize your payment. Your order has been cancelled. Please try again with a different payment method.',
+                [
+                  {
+                    text: 'Try Again',
+                    onPress: () => {
+                      // Stay on checkout screen to try again
+                      setIsProcessing(false);
+                    }
+                  }
+                ]
+              );
+            } catch (cancelError) {
+              console.error('❌ Failed to cancel order:', cancelError);
+              
+              Alert.alert(
+                'Payment Authorization Failed',
+                'Your order was created but payment authorization failed. Please contact support to resolve this issue.',
+                [
+                  {
+                    text: 'Contact Support',
+                    onPress: () => {
+                      router.replace({
+                        pathname: '/order-confirmation',
+                        params: {
+                          orderId: createdOrder.id || 'NEW',
+                          orderTotal: finalTotal.toFixed(2),
+                          paymentAuthorized: 'false',
+                          paymentError: 'true'
+                        }
+                      });
+                    }
+                  }
+                ]
+              );
+            }
+          }
+        } catch (paymentError) {
+          console.error('❌ Payment authorization error:', paymentError);
+          
+          // Attempt to cancel the order due to payment error
+          try {
+            console.log('🔄 Attempting to cancel order due to payment error...');
+            await ordersAPI.updateStatus(createdOrder.id, 'cancelled');
+            console.log('✅ Order cancelled successfully');
+            
+            Alert.alert(
+              'Payment Error',
+              'There was an error processing your payment. Your order has been cancelled. Please try again.',
+              [
+                {
+                  text: 'Try Again',
+                  onPress: () => {
+                    setIsProcessing(false);
+                  }
+                }
+              ]
+            );
+          } catch (cancelError) {
+            console.error('❌ Failed to cancel order after payment error:', cancelError);
+            
+            Alert.alert(
+              'Payment Authorization Error',
+              'Your order was created but there was an issue with payment authorization. Please contact support to resolve this issue.',
+              [
+                {
+                  text: 'Contact Support',
+                  onPress: () => {
+                    router.replace({
+                      pathname: '/order-confirmation',
+                      params: {
+                        orderId: createdOrder.id || 'NEW',
+                        orderTotal: finalTotal.toFixed(2),
+                        paymentAuthorized: 'error',
+                        paymentError: 'true'
+                      }
+                    });
+                  }
+                }
+              ]
+            );
+          }
         }
       } else {
-        throw new Error('Failed to create order');
+        throw new Error(response.error || 'Failed to create order');
       }
       
     } catch (error) {

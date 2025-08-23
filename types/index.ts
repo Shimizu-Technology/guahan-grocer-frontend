@@ -37,12 +37,31 @@ export interface Item {
   available?: boolean;
   trackInventory?: boolean;
   stockStatus?: string;
+  // Weight-based properties
+  weightBased?: boolean;
+  weightUnit?: string;
+  pricePerUnit?: number;
+  minWeight?: number;
+  maxWeight?: number;
+  weightRange?: string;
+  priceInfo?: {
+    is_weight_based: boolean;
+    price_per_unit?: number;
+    weight_unit?: string;
+    estimated_price?: number;
+    display_text: string;
+    fixed_price?: number;
+  };
 }
 
 export interface CartItem {
   id: string;
   item: Item;
   quantity: number;
+  // Weight-based properties
+  selectedWeight?: number;
+  estimatedPrice?: number;
+  weightNote?: string;
 }
 
 export interface Order {
@@ -128,4 +147,57 @@ export interface VehicleFormData {
   color: string;
   licensePlate: string;
   vehicleType: VehicleType;
+}
+
+// Weight variance and payment types
+export interface WeightInfo {
+  estimatedWeight?: number;
+  actualWeight?: number;
+  weightUnit?: string;
+  estimatedPrice?: number;
+  actualPrice?: number;
+  variancePercentage?: number;
+  varianceApproved?: boolean;
+  weightVerified?: boolean;
+  needsApproval?: boolean;
+  weightVariance?: number;
+  priceVariance?: number;
+  varianceApprovalMethod?: string;
+  weightVerifiedAt?: string;
+  substitutionReason?: string;
+}
+
+export interface UserPreferences {
+  autoApproveVariances: boolean;
+  maxAutoVariancePercentage: number;
+  autoApproveOveragesOnly: boolean;
+  varianceNotificationMethod: string;
+  approvalTimeoutMinutes: number;
+}
+
+export interface PaymentInfo {
+  orderId: string;
+  paymentStatus: string;
+  hasPaymentIntent: boolean;
+  amount?: number;
+  amountCaptured?: number;
+  estimatedTotal?: number;
+  preAuthAmount?: number;
+  finalTotal?: number;
+  paymentIntentId?: string;
+}
+
+export interface VarianceApproval {
+  id: string;
+  orderItemId: string;
+  originalWeight: number;
+  newWeight: number;
+  originalPrice: number;
+  newPrice: number;
+  variancePercentage: number;
+  approvalStatus: 'pending' | 'approved' | 'rejected' | 'timeout';
+  approvalMethod?: string;
+  customerResponseAt?: string;
+  timeoutAt?: string;
+  driverNote?: string;
 } 

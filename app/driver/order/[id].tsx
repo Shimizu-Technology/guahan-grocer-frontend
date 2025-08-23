@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -18,9 +18,10 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { useAuth } from '../../../context/AuthContext';
-import { ordersAPI, orderItemsAPI } from '../../../services/api';
+import { ordersAPI, orderItemsAPI, weightVarianceAPI } from '../../../services/api';
 import SimpleImage from '../../../components/shared/SimpleImage';
 
 interface OrderItem {
@@ -34,6 +35,32 @@ interface OrderItem {
   notes: string;
   status?: string;
   imageUrl?: string;
+  // Weight-based properties
+  product?: {
+    weightBased?: boolean;
+    weightUnit?: string;
+    pricePerUnit?: number;
+    minWeight?: number;
+    maxWeight?: number;
+  };
+  weightInfo?: {
+    estimatedWeight?: number;
+    actualWeight?: number;
+    weightUnit?: string;
+    estimatedPrice?: number;
+    actualPrice?: number;
+    variancePercentage?: number;
+    varianceApproved?: boolean;
+    weightVerified?: boolean;
+    needsApproval?: boolean;
+    weightVariance?: number;
+    priceVariance?: number;
+    varianceApprovalMethod?: string;
+    weightVerifiedAt?: string;
+    substitutionReason?: string;
+  };
+  finalPrice?: number;
+  lineTotal?: number;
 }
 
 interface OrderData {
@@ -62,11 +89,30 @@ export default function DriverOrderDetails() {
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [receiptPhoto, setReceiptPhoto] = useState<string | null>(null);
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
+  
+  // Weight input modal state
+  const [weightModalVisible, setWeightModalVisible] = useState(false);
+  const [selectedItemForWeight, setSelectedItemForWeight] = useState<OrderItem | null>(null);
+  const [inputWeight, setInputWeight] = useState('');
+  const [weightNote, setWeightNote] = useState('');
+  const [updatingWeight, setUpdatingWeight] = useState(false);
+  const [skipNextFetch, setSkipNextFetch] = useState(false);
 
   // Fetch order data from API
   useEffect(() => {
     fetchOrderData();
   }, [id]);
+
+  // Refresh data when returning to this screen (but skip if we just updated locally)
+  useFocusEffect(
+    useCallback(() => {
+      if (skipNextFetch) {
+        setSkipNextFetch(false); // Reset the flag
+        return;
+      }
+      fetchOrderData();
+    }, [skipNextFetch])
+  );
 
   const fetchOrderData = async () => {
     try {
@@ -102,6 +148,17 @@ export default function DriverOrderDetails() {
             notes: item.notes || '',
             status: item.status || 'pending',
             imageUrl: item.product?.image_url || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300',
+            // Weight-based properties
+            product: {
+              weightBased: item.product?.weightBased || false,
+              weightUnit: item.product?.weightUnit,
+              pricePerUnit: item.product?.pricePerUnit,
+              minWeight: item.product?.minWeight,
+              maxWeight: item.product?.maxWeight,
+            },
+            weightInfo: item.weightInfo || null,
+            finalPrice: item.finalPrice || item.price,
+            lineTotal: item.lineTotal || (item.price * item.quantity),
           }))
         };
 
@@ -308,6 +365,9 @@ export default function DriverOrderDetails() {
         setOrder({ ...order, status: 'delivering' });
       }
       
+      // Skip the next focus-triggered fetch since we just updated locally
+      setSkipNextFetch(true);
+      
       // Reset receipt photo for next order
       setReceiptPhoto(null);
       
@@ -341,6 +401,9 @@ export default function DriverOrderDetails() {
               if (order) {
                 setOrder({ ...order, status: 'delivered' });
               }
+              
+              // Skip the next focus-triggered fetch since we just updated locally
+              setSkipNextFetch(true);
               
               Alert.alert(
                 'Delivery Complete! 🎉',
@@ -377,6 +440,9 @@ export default function DriverOrderDetails() {
             : item
         )
       });
+
+      // Skip the next focus-triggered fetch since we just updated locally
+      setSkipNextFetch(true);
     } catch (error) {
       console.error('Failed to update item status:', error);
       Alert.alert('Error', 'Failed to update item status. Please try again.');
@@ -474,6 +540,126 @@ export default function DriverOrderDetails() {
     );
   };
 
+  // Weight input handlers
+  const handleWeightInput = (item: OrderItem) => {
+    if (currentStep === 'details') {
+      Alert.alert(
+        'Start Shopping First',
+        'Please tap "Start Shopping" to begin shopping and input weights.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    if (!item.product?.weightBased) {
+      return; // Not a weight-based item
+    }
+
+    setSelectedItemForWeight(item);
+    setInputWeight(item.weightInfo?.actualWeight?.toString() || '');
+    setWeightNote(item.weightInfo?.substitutionReason || '');
+    setWeightModalVisible(true);
+  };
+
+  const closeWeightModal = () => {
+    setWeightModalVisible(false);
+    setSelectedItemForWeight(null);
+    setInputWeight('');
+    setWeightNote('');
+  };
+
+  const handleSaveWeight = async () => {
+    if (!selectedItemForWeight || !order) return;
+
+    const weight = parseFloat(inputWeight);
+    if (isNaN(weight) || weight <= 0) {
+      Alert.alert('Invalid Weight', 'Please enter a valid weight greater than 0');
+      return;
+    }
+
+    const product = selectedItemForWeight.product;
+    if (product?.minWeight && weight < product.minWeight) {
+      Alert.alert('Weight Too Low', `Minimum weight is ${product.minWeight} ${product.weightUnit}`);
+      return;
+    }
+
+    if (product?.maxWeight && weight > product.maxWeight) {
+      Alert.alert('Weight Too High', `Maximum weight is ${product.maxWeight} ${product.weightUnit}`);
+      return;
+    }
+
+    try {
+      setUpdatingWeight(true);
+      
+      const response = await weightVarianceAPI.updateItemWeight(
+        order.id,
+        selectedItemForWeight.id,
+        weight,
+        weightNote || undefined
+      );
+
+      if (response.data) {
+        // Update the local order state with the new weight info
+        const updatedOrder = { ...order };
+        const itemIndex = updatedOrder.items.findIndex(item => item.id === selectedItemForWeight.id);
+        
+        // Type assertion for API response data
+        const responseData = response.data as any;
+        
+        if (itemIndex >= 0) {
+          updatedOrder.items[itemIndex] = {
+            ...updatedOrder.items[itemIndex],
+            weightInfo: responseData.weightInfo,
+            finalPrice: responseData.orderItem?.finalPrice,
+            lineTotal: responseData.orderItem?.lineTotal,
+            // Update status and foundQuantity for weight-based items
+            status: responseData.orderItem?.status || updatedOrder.items[itemIndex].status,
+            foundQuantity: responseData.orderItem?.foundQuantity || updatedOrder.items[itemIndex].foundQuantity,
+          };
+          setOrder(updatedOrder);
+        }
+
+        // Skip the next focus-triggered fetch since we just updated locally
+        setSkipNextFetch(true);
+
+        closeWeightModal();
+
+        // Show success message with variance info if applicable
+        if (responseData.needsApproval) {
+          const variancePercentage = responseData.varianceInfo?.variance_percentage || responseData.weightInfo?.variancePercentage || 0;
+          Alert.alert(
+            'Weight Updated - Approval Needed',
+            `Weight updated to ${weight} ${product?.weightUnit}. Customer approval is needed for the ${Math.abs(variancePercentage).toFixed(1)}% variance.`,
+            [{ text: 'OK' }]
+          );
+        } else if (responseData.autoApproved) {
+          Alert.alert(
+            'Weight Updated - Auto Approved',
+            `Weight updated to ${weight} ${product?.weightUnit}. Variance was automatically approved.`,
+            [{ text: 'OK' }]
+          );
+        } else {
+          Alert.alert(
+            'Weight Updated',
+            `Weight updated to ${weight} ${product?.weightUnit}.`,
+            [{ text: 'OK' }]
+          );
+        }
+
+      } else {
+        throw new Error(response.error || 'Failed to update weight');
+      }
+    } catch (error) {
+      console.error('Error updating weight:', error);
+      Alert.alert(
+        'Error',
+        'Failed to update weight. Please try again.'
+      );
+    } finally {
+      setUpdatingWeight(false);
+    }
+  };
+
   const getItemStatusIcon = (item: OrderItem) => {
     if (item.foundQuantity === null) return { name: 'ellipse-outline', color: '#6B7280' };
     if (item.foundQuantity === 0) return { name: 'close-circle', color: '#DC2626' };
@@ -492,16 +678,36 @@ export default function DriverOrderDetails() {
     }
   };
 
-  const completedItems = order.items.filter(item => item.foundQuantity !== null).length;
+  // Removed completedItems - using foundItems instead for consistency
   
-  // Calculate actual quantities found vs needed
-  const totalQuantityNeeded = order.items.reduce((sum, item) => sum + item.quantity, 0);
-  const totalQuantityFound = order.items.reduce((sum, item) => {
-    return sum + (item.foundQuantity || 0);
-  }, 0);
-  
-  const foundItems = order.items.filter(item => item.foundQuantity !== null && item.foundQuantity > 0).length;
+  // Calculate item-based progress (not quantity-based)
+  const foundItems = order.items.filter(item => {
+    // For weight-based items, check if weight is verified AND variance is approved (or doesn't need approval)
+    if (item.product?.weightBased) {
+      return item.weightInfo?.actualWeight && 
+             (item.weightInfo?.varianceApproved === true || item.weightInfo?.needsApproval === false);
+    }
+    // For unit-based items, check if foundQuantity is set
+    return item.foundQuantity !== null && item.foundQuantity > 0;
+  }).length;
   const totalItems = order.items.length;
+  
+  // Debug logging
+  console.log('Progress calculation:', {
+    totalItems,
+    foundItems,
+    items: order.items.map(item => ({
+      name: item.name,
+      weightBased: item.product?.weightBased,
+      foundQuantity: item.foundQuantity,
+      actualWeight: item.weightInfo?.actualWeight,
+      varianceApproved: item.weightInfo?.varianceApproved,
+      needsApproval: item.weightInfo?.needsApproval,
+      isComplete: item.product?.weightBased ? 
+        (item.weightInfo?.actualWeight && (item.weightInfo?.varianceApproved === true || item.weightInfo?.needsApproval === false)) :
+        (item.foundQuantity !== null && item.foundQuantity > 0)
+    }))
+  });
 
   return (
     <>
@@ -533,13 +739,13 @@ export default function DriverOrderDetails() {
               <View style={styles.progressCard}>
                 <View style={styles.progressHeader}>
                   <Text style={styles.progressTitle}>Shopping Progress</Text>
-                  <Text style={styles.progressText}>{totalQuantityFound}/{totalQuantityNeeded} items found</Text>
+                  <Text style={styles.progressText}>{foundItems}/{totalItems} items found</Text>
                 </View>
                 <View style={styles.progressBar}>
                   <View 
                     style={[
                       styles.progressFill, 
-                      { width: `${totalQuantityNeeded > 0 ? (totalQuantityFound / totalQuantityNeeded) * 100 : 0}%` }
+                      { width: `${totalItems > 0 ? (foundItems / totalItems) * 100 : 0}%` }
                     ]} 
                   />
                 </View>
@@ -628,44 +834,154 @@ export default function DriverOrderDetails() {
                       styles.itemCategory,
                       !isShoppingStarted && styles.itemTextDisabled
                     ]}>{item.category}</Text>
-                    <Text style={[
-                      styles.itemPrice,
-                      !isShoppingStarted && styles.itemTextDisabled
-                    ]}>
-                      ${item.price} • Qty: {item.quantity}
-                      {item.foundQuantity !== null && (
-                        <Text style={{ color: isNotFound ? '#DC2626' : isPartiallyFound ? '#EA580C' : '#059669' }}>
-                          {' '}• Found: {item.foundQuantity}
+                    {/* Simplified display for weight-based items */}
+                    {item.product?.weightBased ? (
+                      <View style={styles.weightBasedItemInfo}>
+                        <Text style={[
+                          styles.itemPrice,
+                          !isShoppingStarted && styles.itemTextDisabled
+                        ]}>
+                          ${item.product.pricePerUnit?.toFixed(2) || item.price} per {item.product.weightUnit}
                         </Text>
-                      )}
-                    </Text>
+                        
+                        <View style={styles.weightDisplayRow}>
+                          <Text style={[
+                            styles.weightRequestText,
+                            !isShoppingStarted && styles.itemTextDisabled
+                          ]}>
+                            Need: {item.quantity} {item.product.weightUnit}
+                          </Text>
+                          {item.weightInfo?.estimatedPrice && (
+                            <Text style={[
+                              styles.estimatedPriceText,
+                              !isShoppingStarted && styles.itemTextDisabled
+                            ]}>
+                              (~${item.weightInfo.estimatedPrice?.toFixed(2)})
+                            </Text>
+                          )}
+                        </View>
+                        
+                        {item.weightInfo?.actualWeight ? (
+                          <View style={styles.actualWeightInfo}>
+                            <Text style={styles.actualWeightText}>
+                              ✓ Weighed: {item.weightInfo.actualWeight} {item.product.weightUnit} = ${item.weightInfo.actualPrice?.toFixed(2)}
+                            </Text>
+                            {item.weightInfo.variancePercentage !== undefined && Math.abs(item.weightInfo.variancePercentage) > 0.1 && (
+                              <View style={styles.varianceInfo}>
+                                <Text style={[
+                                  styles.varianceText,
+                                  { color: item.weightInfo.variancePercentage > 0 ? '#EA580C' : '#059669' }
+                                ]}>
+                                  {item.weightInfo.variancePercentage > 0 ? '+' : ''}{item.weightInfo.variancePercentage.toFixed(1)}% difference
+                                </Text>
+                                {item.weightInfo.needsApproval && (
+                                  <View style={styles.approvalNeededBadge}>
+                                    <Ionicons name="time-outline" size={12} color="#EA580C" />
+                                    <Text style={styles.approvalNeededText}>Customer approval needed</Text>
+                                  </View>
+                                )}
+                                {item.weightInfo.varianceApproved === true && (
+                                  <View style={styles.approvedBadge}>
+                                    <Ionicons name="checkmark-circle" size={12} color="#059669" />
+                                    <Text style={styles.approvedText}>Approved</Text>
+                                  </View>
+                                )}
+                              </View>
+                            )}
+                          </View>
+                        ) : isShoppingStarted && (
+                          <View style={styles.weightPromptRow}>
+                            <Ionicons name="scale" size={16} color="#0F766E" />
+                            <Text style={styles.weightPromptText}>
+                              Tap scale button to weigh this item
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    ) : (
+                      <Text style={[
+                        styles.itemPrice,
+                        !isShoppingStarted && styles.itemTextDisabled
+                      ]}>
+                        ${item.price} • Qty: {item.quantity}
+                        {item.foundQuantity !== null && (
+                          <Text style={{ color: isNotFound ? '#DC2626' : isPartiallyFound ? '#EA580C' : '#059669' }}>
+                            {' '}• Found: {item.foundQuantity}
+                          </Text>
+                        )}
+                      </Text>
+                    )}
                   </View>
 
                   <View style={styles.itemActions}>
-                    <TouchableOpacity
-                      style={[
-                        styles.statusButton,
-                        isFullyFound && styles.statusButtonFound,
-                        isNotFound && styles.statusButtonNotFound,
-                        isPartiallyFound && styles.statusButtonPartial,
-                        !isShoppingStarted && styles.statusButtonDisabled,
-                      ]}
-                      onPress={() => handleCompleteItem(item.id)}
-                    >
-                      <Ionicons 
-                        name={statusIcon.name as any} 
-                        size={24} 
-                        color={!isShoppingStarted ? '#D1D5DB' : statusIcon.color} 
-                      />
-                    </TouchableOpacity>
+                    {/* Different UI for weight-based vs unit-based items */}
+                    {item.product?.weightBased ? (
+                      /* Weight-based items: Only show weigh button and substitution */
+                      currentStep === 'shopping' ? (
+                        <>
+                          <TouchableOpacity
+                            style={[
+                              styles.weightButton,
+                              item.weightInfo?.actualWeight ? styles.weightButtonActive : null
+                            ]}
+                            onPress={() => handleWeightInput(item)}
+                          >
+                            <Ionicons 
+                              name="scale" 
+                              size={20} 
+                              color="#FFFFFF"
+                            />
+                            <Text style={styles.weightButtonText}>
+                              {item.weightInfo?.actualWeight ? 'Update' : 'Weigh'}
+                            </Text>
+                          </TouchableOpacity>
+                          
+                          <TouchableOpacity
+                            style={styles.substitutionButton}
+                            onPress={() => handleSubstitution(item.id)}
+                          >
+                            <Ionicons name="swap-horizontal" size={16} color="#0F766E" />
+                          </TouchableOpacity>
+                        </>
+                      ) : (
+                        /* Show weight status when not shopping */
+                        <View style={styles.weightStatusIndicator}>
+                          {item.weightInfo?.actualWeight ? (
+                            <Ionicons name="checkmark-circle" size={24} color="#059669" />
+                          ) : (
+                            <Ionicons name="scale" size={24} color="#6B7280" />
+                          )}
+                        </View>
+                      )
+                    ) : (
+                      /* Unit-based items: Show regular found/not-found button */
+                      <>
+                        <TouchableOpacity
+                          style={[
+                            styles.statusButton,
+                            isFullyFound && styles.statusButtonFound,
+                            isNotFound && styles.statusButtonNotFound,
+                            isPartiallyFound && styles.statusButtonPartial,
+                            !isShoppingStarted && styles.statusButtonDisabled,
+                          ]}
+                          onPress={() => handleCompleteItem(item.id)}
+                        >
+                          <Ionicons 
+                            name={statusIcon.name as any} 
+                            size={24} 
+                            color={!isShoppingStarted ? '#D1D5DB' : statusIcon.color} 
+                          />
+                        </TouchableOpacity>
 
-                    {currentStep === 'shopping' && (
-                      <TouchableOpacity
-                        style={styles.substitutionButton}
-                        onPress={() => handleSubstitution(item.id)}
-                      >
-                        <Ionicons name="swap-horizontal" size={16} color="#0F766E" />
-                      </TouchableOpacity>
+                        {currentStep === 'shopping' && (
+                          <TouchableOpacity
+                            style={styles.substitutionButton}
+                            onPress={() => handleSubstitution(item.id)}
+                          >
+                            <Ionicons name="swap-horizontal" size={16} color="#0F766E" />
+                          </TouchableOpacity>
+                        )}
+                      </>
                     )}
                   </View>
                 </View>
@@ -730,27 +1046,27 @@ export default function DriverOrderDetails() {
               <TouchableOpacity
                 style={[
                   styles.checkoutButton,
-                  completedItems < totalItems && styles.checkoutButtonDisabled
+                  foundItems < totalItems && styles.checkoutButtonDisabled
                 ]}
                 onPress={() => {
-                  if (completedItems < totalItems) {
+                  if (foundItems < totalItems) {
                     Alert.alert('Shopping Incomplete', 'Please check all items before proceeding to checkout.');
                   } else {
                     setShowCheckoutModal(true);
                   }
                 }}
-                disabled={completedItems < totalItems}
+                disabled={foundItems < totalItems}
                 activeOpacity={0.8}
               >
                 <Ionicons 
                   name="bag-check" 
                   size={20} 
-                  color={completedItems < totalItems ? '#9CA3AF' : 'white'} 
+                  color={foundItems < totalItems ? '#9CA3AF' : 'white'} 
                   style={styles.checkoutIcon} 
                 />
                 <Text style={[
                   styles.checkoutText,
-                  completedItems < totalItems && styles.checkoutTextDisabled
+                  foundItems < totalItems && styles.checkoutTextDisabled
                 ]}>
                   Proceed to Checkout
                 </Text>
@@ -850,14 +1166,46 @@ export default function DriverOrderDetails() {
                       <View style={styles.checkoutItemInfo}>
                         <Text style={styles.checkoutItemName}>{item.name}</Text>
                         <Text style={styles.checkoutItemDetails}>
-                          Found: {item.foundQuantity!} of {item.quantity}
-                          {item.foundQuantity! < item.quantity && (
-                            <Text style={styles.checkoutItemMissing}> (Missing {item.quantity - item.foundQuantity!})</Text>
+                          {item.product?.weightBased ? (
+                            // Weight-based item: show actual weight vs estimated weight
+                            item.weightInfo?.actualWeight ? (
+                              <>
+                                Found: {item.weightInfo.actualWeight} {item.product.weightUnit} (Est: {item.weightInfo.estimatedWeight || item.quantity} {item.product.weightUnit})
+                                {item.weightInfo.variancePercentage && Math.abs(item.weightInfo.variancePercentage) > 0.1 && (
+                                  <Text style={[
+                                    styles.checkoutVarianceText,
+                                    { color: item.weightInfo.variancePercentage > 0 ? '#059669' : '#DC2626' }
+                                  ]}>
+                                    {' '}({item.weightInfo.variancePercentage > 0 ? '+' : ''}{item.weightInfo.variancePercentage.toFixed(1)}%)
+                                  </Text>
+                                )}
+                                {/* Show price variance if there's a difference */}
+                                {item.weightInfo.estimatedPrice && item.weightInfo.actualPrice && 
+                                 Math.abs(item.weightInfo.estimatedPrice - item.weightInfo.actualPrice) > 0.01 && (
+                                  <Text style={styles.checkoutPriceVariance}>
+                                    {'\n'}Est: ${item.weightInfo.estimatedPrice.toFixed(2)} → Actual: ${item.weightInfo.actualPrice.toFixed(2)}
+                                  </Text>
+                                )}
+                              </>
+                            ) : (
+                              `Found: ${item.foundQuantity!} ${item.product.weightUnit}`
+                            )
+                          ) : (
+                            // Unit-based item: show quantity comparison
+                            <>
+                              Found: {item.foundQuantity!} of {item.quantity}
+                              {item.foundQuantity! < item.quantity && (
+                                <Text style={styles.checkoutItemMissing}> (Missing {item.quantity - item.foundQuantity!})</Text>
+                              )}
+                            </>
                           )}
                         </Text>
                       </View>
                       <Text style={styles.checkoutItemPrice}>
-                        ${(item.price * item.foundQuantity!).toFixed(2)}
+                        ${item.product?.weightBased && item.weightInfo?.actualPrice 
+                          ? item.weightInfo.actualPrice.toFixed(2)
+                          : (item.price * item.foundQuantity!).toFixed(2)
+                        }
                       </Text>
                     </View>
                   ))}
@@ -959,6 +1307,144 @@ export default function DriverOrderDetails() {
                   !receiptPhoto && styles.completeCheckoutTextDisabled
                 ]}>
                   Checkout Complete
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
+        </Modal>
+
+        {/* Weight Input Modal */}
+        <Modal
+          visible={weightModalVisible}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={closeWeightModal}
+        >
+          <SafeAreaView style={styles.weightModalContainer}>
+            <View style={styles.weightModalHeader}>
+              <TouchableOpacity onPress={closeWeightModal} style={styles.weightModalCloseButton}>
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+              <Text style={styles.weightModalTitle}>Input Actual Weight</Text>
+              <View style={styles.weightModalCloseButton} />
+            </View>
+
+            {selectedItemForWeight && (
+              <ScrollView style={styles.weightModalContent} showsVerticalScrollIndicator={false}>
+                {/* Product Info */}
+                <View style={styles.weightProductInfo}>
+                  <Text style={styles.weightProductName}>{selectedItemForWeight.name}</Text>
+                  <Text style={styles.weightProductCategory}>{selectedItemForWeight.category}</Text>
+                  <View style={styles.weightPriceInfo}>
+                    <Text style={styles.weightPriceText}>
+                      ${selectedItemForWeight.product?.pricePerUnit?.toFixed(2)} per {selectedItemForWeight.product?.weightUnit}
+                    </Text>
+                    {selectedItemForWeight.product?.minWeight && selectedItemForWeight.product?.maxWeight && (
+                      <Text style={styles.weightRangeText}>
+                        Range: {selectedItemForWeight.product.minWeight} - {selectedItemForWeight.product.maxWeight} {selectedItemForWeight.product.weightUnit}
+                      </Text>
+                    )}
+                  </View>
+
+                  {/* Target weight display */}
+                  <View style={styles.targetWeightContainer}>
+                    <View style={styles.targetWeightRow}>
+                      <Ionicons name="flag" size={16} color="#0F766E" />
+                      <Text style={styles.targetWeightLabel}>Target:</Text>
+                      <Text style={styles.targetWeightValue}>
+                        {selectedItemForWeight.quantity} {selectedItemForWeight.product?.weightUnit}
+                      </Text>
+                    </View>
+                    <Text style={styles.targetWeightPrice}>
+                      Estimated: ${((selectedItemForWeight.quantity || 0) * (selectedItemForWeight.product?.pricePerUnit || 0)).toFixed(2)}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Estimated vs Actual */}
+                {selectedItemForWeight.weightInfo?.estimatedWeight && (
+                  <View style={styles.weightComparisonSection}>
+                    <Text style={styles.weightSectionTitle}>Weight Comparison</Text>
+                    <View style={styles.weightComparisonCard}>
+                      <View style={styles.weightComparisonRow}>
+                        <Text style={styles.estimatedLabel}>Customer Requested:</Text>
+                        <Text style={styles.estimatedValue}>
+                          {selectedItemForWeight.weightInfo.estimatedWeight} {selectedItemForWeight.product?.weightUnit}
+                        </Text>
+                      </View>
+                      <View style={styles.weightComparisonRow}>
+                        <Text style={styles.actualLabel}>Actual Weight:</Text>
+                        <Text style={styles.actualValue}>
+                          {selectedItemForWeight.weightInfo.actualWeight || 'Not set'} {selectedItemForWeight.product?.weightUnit}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                )}
+
+                {/* Weight Input */}
+                <View style={styles.weightInputSection}>
+                  <Text style={styles.weightSectionTitle}>Actual Weight ({selectedItemForWeight.product?.weightUnit})</Text>
+                  <View style={styles.weightInputContainer}>
+                    <TextInput
+                      style={styles.weightInput}
+                      value={inputWeight}
+                      onChangeText={setInputWeight}
+                      placeholder="Enter actual weight"
+                      keyboardType="decimal-pad"
+                      autoFocus
+                    />
+                    <Text style={styles.weightUnitLabel}>{selectedItemForWeight.product?.weightUnit}</Text>
+                  </View>
+                  
+                  {inputWeight && !isNaN(parseFloat(inputWeight)) && parseFloat(inputWeight) > 0 && (
+                    <View style={styles.priceEstimate}>
+                      <Text style={styles.priceEstimateLabel}>Estimated Price:</Text>
+                      <Text style={styles.priceEstimateValue}>
+                        ${((selectedItemForWeight.product?.pricePerUnit || 0) * parseFloat(inputWeight)).toFixed(2)}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Note Input */}
+                <View style={styles.weightNoteSection}>
+                  <Text style={styles.weightSectionTitle}>Note (Optional)</Text>
+                  <TextInput
+                    style={styles.weightNoteInput}
+                    value={weightNote}
+                    onChangeText={setWeightNote}
+                    placeholder="Any notes about the weight difference..."
+                    multiline
+                    numberOfLines={3}
+                  />
+                </View>
+              </ScrollView>
+            )}
+
+            <View style={styles.weightModalActions}>
+              <TouchableOpacity
+                style={styles.weightCancelButton}
+                onPress={closeWeightModal}
+              >
+                <Text style={styles.weightCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[
+                  styles.weightSaveButton,
+                  (!inputWeight || isNaN(parseFloat(inputWeight)) || parseFloat(inputWeight) <= 0 || updatingWeight) && styles.weightSaveButtonDisabled
+                ]}
+                onPress={handleSaveWeight}
+                disabled={!inputWeight || isNaN(parseFloat(inputWeight)) || parseFloat(inputWeight) <= 0 || updatingWeight}
+              >
+                {updatingWeight ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Ionicons name="scale" size={20} color="white" />
+                )}
+                <Text style={styles.weightSaveButtonText}>
+                  {updatingWeight ? 'Saving...' : 'Save Weight'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1492,6 +1978,16 @@ const styles = StyleSheet.create({
     color: '#DC2626',
     fontWeight: '500',
   },
+  checkoutVarianceText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  checkoutPriceVariance: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
   checkoutItemPrice: {
     fontSize: 16,
     fontWeight: '600',
@@ -1746,5 +2242,397 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     letterSpacing: 0.3,
+  },
+  // Weight-based item styles
+  weightBasedItemInfo: {
+    marginTop: 4,
+  },
+  itemPriceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  weightBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 6,
+    gap: 2,
+  },
+  weightBadgeText: {
+    fontSize: 9,
+    color: '#0F766E',
+    fontWeight: '500',
+  },
+  estimatedWeightText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontStyle: 'italic',
+    marginBottom: 2,
+  },
+  actualWeightInfo: {
+    backgroundColor: '#F0F9FF',
+    padding: 8,
+    borderRadius: 8,
+    marginVertical: 4,
+  },
+  actualWeightText: {
+    fontSize: 13,
+    color: '#0369A1',
+    fontWeight: '600',
+  },
+  varianceInfo: {
+    marginTop: 6,
+    gap: 6,
+  },
+  varianceText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  approvalNeededBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    gap: 4,
+  },
+  approvalNeededText: {
+    fontSize: 11,
+    color: '#EA580C',
+    fontWeight: '500',
+  },
+  approvedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    gap: 4,
+  },
+  approvedText: {
+    fontSize: 11,
+    color: '#059669',
+    fontWeight: '500',
+  },
+  weightPromptText: {
+    fontSize: 11,
+    color: '#0F766E',
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+  foundQuantityText: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  // New weight-based item styles
+  weightDisplayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+  },
+  weightRequestText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0F766E',
+  },
+  estimatedPriceText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontStyle: 'italic',
+  },
+  weightPromptRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    backgroundColor: '#F0FDFA',
+    borderRadius: 6,
+  },
+  weightButton: {
+    backgroundColor: '#0F766E',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginLeft: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    minWidth: 70,
+    justifyContent: 'center',
+  },
+  weightButtonActive: {
+    backgroundColor: '#059669',
+  },
+  weightButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  weightStatusIndicator: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F3F4F6',
+  },
+  // Weight input modal styles
+  weightModalContainer: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+  },
+  weightModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    backgroundColor: 'white',
+  },
+  weightModalCloseButton: {
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  weightModalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  weightModalContent: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  weightProductInfo: {
+    backgroundColor: 'white',
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  weightProductName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  weightProductCategory: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  weightPriceInfo: {
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  weightPriceText: {
+    fontSize: 16,
+    color: '#0F766E',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  weightRangeText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontStyle: 'italic',
+  },
+  targetWeightContainer: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: '#F0FDFA',
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#0F766E',
+  },
+  targetWeightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  targetWeightLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#0F766E',
+  },
+  targetWeightValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F766E',
+  },
+  targetWeightPrice: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  weightComparisonSection: {
+    marginTop: 16,
+  },
+  weightSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 8,
+  },
+  weightComparisonCard: {
+    backgroundColor: 'white',
+    padding: 16,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  weightComparisonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  estimatedLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  estimatedValue: {
+    fontSize: 14,
+    color: '#1F2937',
+    fontWeight: '500',
+  },
+  actualLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  actualValue: {
+    fontSize: 14,
+    color: '#0F766E',
+    fontWeight: '600',
+  },
+  weightInputSection: {
+    marginTop: 16,
+  },
+  weightInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  weightInput: {
+    flex: 1,
+    fontSize: 18,
+    color: '#1F2937',
+    fontWeight: '500',
+  },
+  weightUnitLabel: {
+    fontSize: 16,
+    color: '#6B7280',
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  priceEstimate: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#F0F9FF',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  priceEstimateLabel: {
+    fontSize: 14,
+    color: '#0369A1',
+    fontWeight: '500',
+  },
+  priceEstimateValue: {
+    fontSize: 16,
+    color: '#0F766E',
+    fontWeight: '700',
+  },
+  weightNoteSection: {
+    marginTop: 16,
+    marginBottom: 20,
+  },
+  weightNoteInput: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 14,
+    color: '#1F2937',
+    textAlignVertical: 'top',
+    minHeight: 80,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  weightModalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    backgroundColor: 'white',
+  },
+  weightCancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
+    backgroundColor: 'white',
+  },
+  weightCancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  weightSaveButton: {
+    flex: 2,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#0F766E',
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  weightSaveButtonDisabled: {
+    backgroundColor: '#9CA3AF',
+  },
+  weightSaveButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: 'white',
   },
 }); 

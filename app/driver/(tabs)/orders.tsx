@@ -54,7 +54,7 @@ interface RecentOrder {
   total: number;
 }
 
-type SortOption = 'payout' | 'distance' | 'time' | 'newest';
+type SortOption = 'oldest' | 'payout' | 'distance' | 'time' | 'newest';
 type FilterOption = 'all' | 'high_pay' | 'nearby' | 'urgent';
 
 export default function DriverOrders() {
@@ -66,7 +66,7 @@ export default function DriverOrders() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<SortOption>('payout');
+  const [sortBy, setSortBy] = useState<SortOption>('oldest'); // Default to oldest first
   const [filterBy, setFilterBy] = useState<FilterOption>('all');
   const [showFilters, setShowFilters] = useState(false);
 
@@ -181,7 +181,7 @@ export default function DriverOrders() {
     if (!order.items || order.items.length === 0) return 0;
     
     const processedItems = order.items.filter((item: any) => 
-      item.status && ['found', 'substituted', 'unavailable'].includes(item.status)
+      item.foundQuantity !== null
     ).length;
     
     return Math.min(processedItems, order.items.length);
@@ -215,6 +215,9 @@ export default function DriverOrders() {
 
     // Apply sorting
     switch (sortBy) {
+      case 'oldest':
+        filtered.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        break;
       case 'payout':
         filtered.sort((a, b) => b.estimatedPayout - a.estimatedPayout);
         break;
@@ -228,6 +231,8 @@ export default function DriverOrders() {
         filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         break;
       default:
+        // Default to oldest first if no sort specified
+        filtered.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
         break;
     }
 
@@ -477,6 +482,7 @@ export default function DriverOrders() {
                   Available Orders ({filteredOrders.length})
                 </Text>
                 <Text style={styles.sortText}>
+                  {sortBy === 'oldest' && 'Oldest First'}
                   {sortBy === 'payout' && 'Highest Pay'}
                   {sortBy === 'distance' && 'Closest'}
                   {sortBy === 'time' && 'Fastest'}
@@ -596,6 +602,7 @@ export default function DriverOrders() {
                 <Text style={styles.filterTitle}>Sort By</Text>
                 <View style={styles.optionsRow}>
                   {[
+                    { key: 'oldest' as SortOption, label: 'Oldest First' },
                     { key: 'payout' as SortOption, label: 'Highest Pay' },
                     { key: 'distance' as SortOption, label: 'Closest' },
                     { key: 'time' as SortOption, label: 'Fastest' },

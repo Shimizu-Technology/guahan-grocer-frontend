@@ -6,13 +6,14 @@ import {
   SafeAreaView,
   TouchableOpacity,
   StatusBar,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useCart } from '../context/CartContext';
 
 export default function OrderConfirmationScreen() {
-  const { orderId, orderTotal } = useLocalSearchParams();
+  const { orderId, orderTotal, paymentAuthorized, preAuthAmount } = useLocalSearchParams();
   const { clearCart } = useCart();
   const cartClearedRef = useRef(false);
 
@@ -42,7 +43,11 @@ export default function OrderConfirmationScreen() {
       />
       <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
       <SafeAreaView style={styles.container}>
-        <View style={styles.content}>
+        <ScrollView 
+          style={styles.scrollContainer}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
           {/* Success Icon */}
           <View style={styles.iconContainer}>
             <View style={styles.iconCircle}>
@@ -58,6 +63,7 @@ export default function OrderConfirmationScreen() {
               Your order has been placed and you'll receive updates via SMS. 
               Our team will start shopping for your items right away.
             </Text>
+            
             {orderTotal && (
               <View style={styles.totalContainer}>
                 <Text style={styles.totalLabel}>Total</Text>
@@ -65,6 +71,51 @@ export default function OrderConfirmationScreen() {
               </View>
             )}
           </View>
+
+          {/* Payment Status */}
+          {paymentAuthorized && (
+            <View style={styles.paymentStatusContainer}>
+              {paymentAuthorized === 'true' ? (
+                <>
+                  <View style={styles.paymentStatusRow}>
+                    <Ionicons name="card-outline" size={20} color="#059669" />
+                    <Text style={styles.paymentStatusSuccess}>Payment Authorized</Text>
+                    <Ionicons name="checkmark-circle" size={20} color="#059669" />
+                  </View>
+                  {preAuthAmount && (
+                    <Text style={styles.paymentStatusNote}>
+                      Pre-authorized: ${preAuthAmount} (includes variance buffer)
+                    </Text>
+                  )}
+                  <Text style={styles.paymentStatusDescription}>
+                    Your payment method has been authorized. Final charge will be processed after delivery.
+                  </Text>
+                </>
+              ) : paymentAuthorized === 'false' ? (
+                <>
+                  <View style={styles.paymentStatusRow}>
+                    <Ionicons name="card-outline" size={20} color="#EA580C" />
+                    <Text style={styles.paymentStatusWarning}>Payment Authorization Failed</Text>
+                    <Ionicons name="warning" size={20} color="#EA580C" />
+                  </View>
+                  <Text style={styles.paymentStatusDescription}>
+                    Your order was created but payment authorization failed. You may be contacted to resolve payment.
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <View style={styles.paymentStatusRow}>
+                    <Ionicons name="card-outline" size={20} color="#DC2626" />
+                    <Text style={styles.paymentStatusError}>Payment Authorization Error</Text>
+                    <Ionicons name="alert-circle" size={20} color="#DC2626" />
+                  </View>
+                  <Text style={styles.paymentStatusDescription}>
+                    There was an issue with payment authorization. You may be contacted to resolve payment.
+                  </Text>
+                </>
+              )}
+            </View>
+          )}
 
           {/* Additional Info */}
           <View style={styles.infoContainer}>
@@ -77,24 +128,24 @@ export default function OrderConfirmationScreen() {
               <Text style={styles.infoText}>SMS updates will be sent to your phone</Text>
             </View>
           </View>
-        </View>
 
-        {/* Action Buttons */}
-        <View style={styles.actionContainer}>
-          <TouchableOpacity 
-            style={styles.continueButton}
-            onPress={handleContinueShopping}
-          >
-            <Text style={styles.continueButtonText}>Continue Shopping</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.trackButton}
-            onPress={() => router.push(`/order-detail/${orderId}`)}
-          >
-            <Text style={styles.trackButtonText}>Track Your Order</Text>
-          </TouchableOpacity>
-        </View>
+          {/* Action Buttons */}
+          <View style={styles.actionContainer}>
+            <TouchableOpacity 
+              style={styles.continueButton}
+              onPress={handleContinueShopping}
+            >
+              <Text style={styles.continueButtonText}>Continue Shopping</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.trackButton}
+              onPress={() => router.push(`/order-detail/${orderId}`)}
+            >
+              <Text style={styles.trackButtonText}>Track Your Order</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </SafeAreaView>
     </>
   );
@@ -105,14 +156,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
-  content: {
+  scrollContainer: {
     flex: 1,
+  },
+  scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 60,
+    paddingTop: 40,
+    paddingBottom: 40,
     alignItems: 'center',
   },
   iconContainer: {
-    marginBottom: 32,
+    marginBottom: 24,
   },
   iconCircle: {
     width: 100,
@@ -132,7 +186,7 @@ const styles = StyleSheet.create({
   },
   messageContainer: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 24,
   },
   successTitle: {
     fontSize: 28,
@@ -183,13 +237,15 @@ const styles = StyleSheet.create({
   },
   infoContainer: {
     width: '100%',
-    gap: 16,
+    gap: 12,
+    marginBottom: 32,
   },
   infoItem: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderRadius: 12,
     shadowColor: '#000',
     shadowOffset: {
@@ -207,14 +263,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   actionContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 20,
+    width: '100%',
     gap: 12,
+    marginTop: 8,
   },
   continueButton: {
     backgroundColor: '#0F766E',
-    borderRadius: 16,
-    paddingVertical: 16,
+    borderRadius: 12,
+    paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#0F766E',
@@ -228,21 +284,75 @@ const styles = StyleSheet.create({
   },
   continueButtonText: {
     color: '#FFFFFF',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
   },
   trackButton: {
     backgroundColor: 'transparent',
     borderWidth: 2,
     borderColor: '#0F766E',
-    borderRadius: 16,
-    paddingVertical: 14,
+    borderRadius: 12,
+    paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   trackButtonText: {
     color: '#0F766E',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  // Payment status styles
+  paymentStatusContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 20,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  paymentStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  paymentStatusSuccess: {
     fontSize: 16,
     fontWeight: '600',
+    color: '#059669',
+  },
+  paymentStatusWarning: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#EA580C',
+  },
+  paymentStatusError: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#DC2626',
+  },
+  paymentStatusNote: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 8,
+    fontWeight: '500',
+  },
+  paymentStatusDescription: {
+    fontSize: 13,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });

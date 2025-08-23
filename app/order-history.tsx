@@ -38,6 +38,7 @@ interface Order {
   subtotal: number;
   deliveryFee: number;
   tipAmount: number;
+  finalTotal?: number;
   createdAt: string;
   deliveryAddress: any;
   deliveryTime: string;
@@ -69,6 +70,7 @@ export default function OrderHistoryScreen() {
           subtotal: parseFloat(order.subtotal || 0),
           deliveryFee: parseFloat(order.deliveryFee || 0),
           tipAmount: parseFloat(order.tipAmount || 0),
+          finalTotal: order.finalTotal ? parseFloat(order.finalTotal) : undefined,
           createdAt: order.createdAt,
           deliveryAddress: order.deliveryAddress,
           deliveryTime: order.deliveryTime || 'ASAP',
@@ -221,7 +223,14 @@ export default function OrderHistoryScreen() {
         <View style={styles.orderFooter}>
           <View style={styles.priceBreakdown}>
             <Text style={styles.priceLabel}>Total</Text>
-            <Text style={styles.totalPrice}>${order.total.toFixed(2)}</Text>
+            <Text style={styles.totalPrice}>
+              ${(order.finalTotal || order.total).toFixed(2)}
+            </Text>
+            {order.finalTotal && order.finalTotal < order.total && (
+              <Text style={styles.savingsText}>
+                Saved ${(order.total - order.finalTotal).toFixed(2)}
+              </Text>
+            )}
           </View>
           <View style={styles.arrowContainer}>
             <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
@@ -443,6 +452,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#0F766E',
+  },
+  savingsText: {
+    fontSize: 12,
+    color: '#059669',
+    fontWeight: '500',
+    marginTop: 2,
   },
   arrowContainer: {
     padding: 4,

@@ -9,6 +9,7 @@ interface CartContextType {
   addItem: (item: Item, quantity?: number) => void;
   removeItem: (itemId: string) => void;
   updateQuantity: (itemId: string, quantity: number) => void;
+  updateWeight: (itemId: string, weight: number, note?: string) => void;
   clearCart: () => void;
 }
 
@@ -57,13 +58,46 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const existingItem = currentItems.find(cartItem => cartItem.item.id === item.id);
       
       if (existingItem) {
-        return currentItems.map(cartItem =>
-          cartItem.item.id === item.id
-            ? { ...cartItem, quantity: cartItem.quantity + quantity }
-            : cartItem
-        );
+        if (item.weightBased) {
+          // For weight-based items, ADD to the existing weight
+          const additionalWeight = quantity; // quantity parameter is actually the weight for weight-based items
+          const currentWeight = existingItem.selectedWeight || 0;
+          const totalWeight = currentWeight + additionalWeight;
+          const estimatedPrice = item.pricePerUnit ? item.pricePerUnit * totalWeight : item.price;
+          return currentItems.map(cartItem =>
+            cartItem.item.id === item.id
+              ? { 
+                  ...cartItem, 
+                  selectedWeight: totalWeight,
+                  estimatedPrice,
+                  quantity: 1 // Weight-based items always have quantity of 1
+                }
+              : cartItem
+          );
+        } else {
+          // For unit-based items, add to quantity
+          return currentItems.map(cartItem =>
+            cartItem.item.id === item.id
+              ? { ...cartItem, quantity: cartItem.quantity + quantity }
+              : cartItem
+          );
+        }
       } else {
-        return [...currentItems, { id: Date.now().toString(), item, quantity }];
+        if (item.weightBased) {
+          // For weight-based items, set the weight and quantity to 1
+          const weight = quantity; // quantity parameter is actually the weight
+          const estimatedPrice = item.pricePerUnit ? item.pricePerUnit * weight : item.price;
+          return [...currentItems, { 
+            id: Date.now().toString(), 
+            item, 
+            quantity: 1, // Always 1 for weight-based items
+            selectedWeight: weight,
+            estimatedPrice
+          }];
+        } else {
+          // For unit-based items, use quantity normally
+          return [...currentItems, { id: Date.now().toString(), item, quantity }];
+        }
       }
     });
   };
@@ -87,12 +121,43 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   };
 
+  const updateWeight = (itemId: string, weight: number, note?: string) => {
+    setItems(currentItems =>
+      currentItems.map(cartItem => {
+        if (cartItem.item.id === itemId && cartItem.item.weightBased) {
+          const estimatedPrice = cartItem.item.pricePerUnit 
+            ? cartItem.item.pricePerUnit * weight
+            : cartItem.item.price;
+          
+          return {
+            ...cartItem,
+            selectedWeight: weight,
+            estimatedPrice,
+            weightNote: note
+          };
+        }
+        return cartItem;
+      })
+    );
+  };
+
   const clearCart = () => {
     setItems([]);
   };
 
-  const itemCount = items.reduce((total, item) => total + item.quantity, 0);
-  const total = items.reduce((sum, item) => sum + (item.item.price * item.quantity), 0);
+  // Count unique items, not total quantity/weight
+  const itemCount = items.length;
+  
+  // Calculate total with weight-based pricing
+  const total = items.reduce((sum, cartItem) => {
+    if (cartItem.item.weightBased && cartItem.selectedWeight && cartItem.item.pricePerUnit) {
+      // Use weight-based pricing
+      return sum + (cartItem.item.pricePerUnit * cartItem.selectedWeight * cartItem.quantity);
+    } else {
+      // Use regular pricing
+      return sum + (cartItem.item.price * cartItem.quantity);
+    }
+  }, 0);
 
   return (
     <CartContext.Provider value={{
@@ -102,6 +167,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       addItem,
       removeItem,
       updateQuantity,
+      updateWeight,
       clearCart
     }}>
       {children}

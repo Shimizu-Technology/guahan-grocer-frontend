@@ -11,12 +11,13 @@ import {
   StatusBar,
   RefreshControl,
   Linking,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 
 import { useAuth } from '../../context/AuthContext';
-import { ordersAPI } from '../../services/api';
+import { ordersAPI, weightVarianceAPI } from '../../services/api';
 
 interface OrderItem {
   id: string;
@@ -32,6 +33,30 @@ interface OrderItem {
   status: string;
   foundQuantity?: number;
   notes?: string;
+  // Weight variance properties
+  product?: {
+    weightBased?: boolean;
+    weightUnit?: string;
+    pricePerUnit?: number;
+  };
+  weightInfo?: {
+    estimatedWeight?: number;
+    actualWeight?: number;
+    weightUnit?: string;
+    estimatedPrice?: number;
+    actualPrice?: number;
+    variancePercentage?: number;
+    varianceApproved?: boolean;
+    weightVerified?: boolean;
+    needsApproval?: boolean;
+    weightVariance?: number;
+    priceVariance?: number;
+    varianceApprovalMethod?: string;
+    weightVerifiedAt?: string;
+    substitutionReason?: string;
+  };
+  finalPrice?: number;
+  lineTotal?: number;
 }
 
 interface Driver {
@@ -87,6 +112,7 @@ interface Order {
   actualDeliveryFee?: number;
   tipAmount: number;
   tipPercentage: number;
+  finalTotal?: number;
   createdAt: string;
   deliveryAddress: any;
   deliveryTime: string;
@@ -123,6 +149,11 @@ export default function OrderDetailScreen() {
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [showTimeline, setShowTimeline] = useState(false);
 
+  // Variance approval modal state
+  const [varianceModalVisible, setVarianceModalVisible] = useState(false);
+  const [selectedVarianceItem, setSelectedVarianceItem] = useState<OrderItem | null>(null);
+  const [approvingVariance, setApprovingVariance] = useState(false);
+
   // Add safety check for user
   console.log('🔍 OrderDetailScreen - User:', user);
   console.log('🔍 OrderDetailScreen - Auth Loading:', authLoading);
@@ -154,6 +185,7 @@ export default function OrderDetailScreen() {
           actualDeliveryFee: orderData.actualDeliveryFee ? parseFloat(orderData.actualDeliveryFee) : undefined,
           tipAmount: parseFloat(orderData.tipAmount || 0),
           tipPercentage: parseFloat(orderData.tipPercentage || 0),
+          finalTotal: orderData.finalTotal ? parseFloat(orderData.finalTotal) : undefined,
           createdAt: orderData.createdAt || new Date().toISOString(),
           deliveryAddress: orderData.deliveryAddress || {},
           deliveryTime: orderData.deliveryTime || 'ASAP',
@@ -161,6 +193,11 @@ export default function OrderDetailScreen() {
           eta: orderData.eta || 45,
           items: (orderData.order_items || orderData.items || []).map((orderItem: any, index: number) => {
             console.log(`📦 Processing order item ${index}:`, orderItem);
+            console.log(`📦 Item has weightInfo:`, !!orderItem.weightInfo);
+            console.log(`📦 Item has product:`, !!orderItem.product);
+            if (orderItem.product?.name?.includes('Cucumber')) {
+              console.log(`🥒 CUCUMBER DEBUG:`, JSON.stringify(orderItem, null, 2));
+            }
             
             if (!orderItem) {
               console.warn(`⚠️ Order item ${index} is null or undefined`);
@@ -187,7 +224,7 @@ export default function OrderDetailScreen() {
               };
             }
 
-            return {
+            const formattedItem: OrderItem = {
               id: orderItem.id,
               itemId: orderItem.product_id || orderItem.itemId,
               item: {
@@ -201,7 +238,41 @@ export default function OrderDetailScreen() {
               status: orderItem.status || 'pending',
               foundQuantity: orderItem.found_quantity || orderItem.foundQuantity,
               notes: orderItem.notes,
+              finalPrice: orderItem.finalPrice ? parseFloat(orderItem.finalPrice) : undefined,
+              lineTotal: orderItem.lineTotal ? parseFloat(orderItem.lineTotal) : undefined,
             };
+
+            // Add weight-based product info if available
+            if (orderItem.product || product.weightBased) {
+              formattedItem.product = {
+                weightBased: orderItem.product?.weightBased || product.weightBased || false,
+                weightUnit: orderItem.product?.weightUnit || product.weightUnit,
+                pricePerUnit: orderItem.product?.pricePerUnit ? parseFloat(orderItem.product.pricePerUnit) : undefined,
+              };
+            }
+
+            // Add weight info if available
+            if (orderItem.weightInfo) {
+              formattedItem.weightInfo = {
+                estimatedWeight: orderItem.weightInfo.estimatedWeight,
+                actualWeight: orderItem.weightInfo.actualWeight,
+                weightUnit: orderItem.weightInfo.weightUnit,
+                estimatedPrice: orderItem.weightInfo.estimatedPrice,
+                actualPrice: orderItem.weightInfo.actualPrice,
+                variancePercentage: orderItem.weightInfo.variancePercentage,
+                varianceApproved: orderItem.weightInfo.varianceApproved,
+                weightVerified: orderItem.weightInfo.weightVerified,
+                needsApproval: orderItem.weightInfo.needsApproval,
+                weightVariance: orderItem.weightInfo.weightVariance,
+                priceVariance: orderItem.weightInfo.priceVariance,
+                varianceApprovalMethod: orderItem.weightInfo.varianceApprovalMethod,
+                weightVerifiedAt: orderItem.weightInfo.weightVerifiedAt,
+                substitutionReason: orderItem.weightInfo.substitutionReason,
+              };
+            }
+
+            console.log(`📦 Formatted item ${index} (${product.name}):`, formattedItem);
+            return formattedItem;
           }).filter(Boolean),
           driver: orderData.driver ? {
             id: String(orderData.driver.id),
@@ -266,6 +337,131 @@ export default function OrderDetailScreen() {
     } finally {
       setTimelineLoading(false);
     }
+  };
+
+  // Variance approval handlers
+  const openVarianceModal = (item: OrderItem) => {
+    if (!item.weightInfo?.needsApproval) return;
+    setSelectedVarianceItem(item);
+    setVarianceModalVisible(true);
+  };
+
+  const closeVarianceModal = () => {
+    setVarianceModalVisible(false);
+    setSelectedVarianceItem(null);
+  };
+
+  const handleApproveVariance = async () => {
+    if (!selectedVarianceItem || !order) return;
+
+    try {
+      setApprovingVariance(true);
+      
+      const response = await weightVarianceAPI.approveVariance(
+        order.id,
+        selectedVarianceItem.id
+      );
+
+      if (response.data) {
+        // Update the local order state
+        const updatedOrder = { ...order };
+        const itemIndex = updatedOrder.items.findIndex(item => item.id === selectedVarianceItem.id);
+        
+        if (itemIndex >= 0) {
+          updatedOrder.items[itemIndex] = {
+            ...updatedOrder.items[itemIndex],
+            weightInfo: {
+              ...updatedOrder.items[itemIndex].weightInfo!,
+              varianceApproved: true,
+              needsApproval: false,
+              varianceApprovalMethod: 'manual'
+            }
+          };
+          setOrder(updatedOrder);
+        }
+
+        closeVarianceModal();
+        Alert.alert(
+          'Variance Approved',
+          'The weight variance has been approved. The final price will reflect the actual weight.',
+          [{ text: 'OK' }]
+        );
+
+      } else {
+        throw new Error(response.error || 'Failed to approve variance');
+      }
+    } catch (error) {
+      console.error('Error approving variance:', error);
+      Alert.alert(
+        'Error',
+        'Failed to approve variance. Please try again.'
+      );
+    } finally {
+      setApprovingVariance(false);
+    }
+  };
+
+  const handleRejectVariance = async () => {
+    if (!selectedVarianceItem || !order) return;
+
+    Alert.alert(
+      'Reject Weight Variance',
+      'Are you sure you want to reject this weight variance? The item may be removed from your order or you may be contacted for alternatives.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Reject', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setApprovingVariance(true);
+              
+              const response = await weightVarianceAPI.rejectVariance(
+                order.id,
+                selectedVarianceItem.id
+              );
+
+              if (response.data) {
+                // Update the local order state
+                const updatedOrder = { ...order };
+                const itemIndex = updatedOrder.items.findIndex(item => item.id === selectedVarianceItem.id);
+                
+                if (itemIndex >= 0) {
+                  updatedOrder.items[itemIndex] = {
+                    ...updatedOrder.items[itemIndex],
+                    weightInfo: {
+                      ...updatedOrder.items[itemIndex].weightInfo!,
+                      varianceApproved: false,
+                      needsApproval: false,
+                      varianceApprovalMethod: 'manual'
+                    }
+                  };
+                  setOrder(updatedOrder);
+                }
+
+                closeVarianceModal();
+                Alert.alert(
+                  'Variance Rejected',
+                  'The weight variance has been rejected. Your order may be updated accordingly.',
+                  [{ text: 'OK' }]
+                );
+
+              } else {
+                throw new Error(response.error || 'Failed to reject variance');
+              }
+            } catch (error) {
+              console.error('Error rejecting variance:', error);
+              Alert.alert(
+                'Error',
+                'Failed to reject variance. Please try again.'
+              );
+            } finally {
+              setApprovingVariance(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   useEffect(() => {
@@ -565,22 +761,129 @@ export default function OrderDetailScreen() {
                            (order.status === 'shopping' || order.status === 'delivering' || order.status === 'delivered') &&
                            item.foundQuantity !== null && 
                            item.foundQuantity !== undefined;
+
+    const isWeightBased = item.product?.weightBased;
+    const hasVarianceInfo = item.weightInfo && item.weightInfo.actualWeight;
+    const needsApproval = item.weightInfo?.needsApproval;
+    const varianceApproved = item.weightInfo?.varianceApproved;
     
     return (
       <View key={item.id} style={styles.itemCard}>
         <View style={styles.itemHeader}>
-          <Text style={styles.itemName}>{item.item.name || 'Unknown Item'}</Text>
-          <Text style={styles.itemPrice}>${item.price.toFixed(2)}</Text>
+          <View style={styles.itemTitleRow}>
+            <Text style={styles.itemName}>{item.item.name || 'Unknown Item'}</Text>
+            {isWeightBased && (
+              <View style={styles.weightBadge}>
+                <Ionicons name="scale-outline" size={12} color="#0F766E" />
+                <Text style={styles.weightBadgeText}>Weight-based</Text>
+              </View>
+            )}
+          </View>
+          <Text style={styles.itemPrice}>
+            ${(item.finalPrice || item.price).toFixed(2)}
+          </Text>
         </View>
+
         <View style={styles.itemDetails}>
+          {/* Regular quantity display */}
           <Text style={styles.itemQuantity}>
             Qty: {item.quantity} {item.item.unit || 'unit'}
           </Text>
-          {shouldShowFound && (
-            <Text style={styles.foundQuantity}>
-              Found: {item.foundQuantity} {item.item.unit || 'unit'}
-            </Text>
+
+          {/* Weight-based pricing info */}
+          {isWeightBased && (
+            <View style={styles.weightBasedDetails}>
+              <Text style={styles.pricePerUnitText}>
+                ${item.product?.pricePerUnit?.toFixed(2) || item.price.toFixed(2)} per {item.product?.weightUnit}
+              </Text>
+              
+              {item.weightInfo?.estimatedWeight && (
+                <Text style={styles.estimatedWeightText}>
+                  Customer requested: {item.weightInfo.estimatedWeight} {item.product?.weightUnit} (${item.weightInfo.estimatedPrice?.toFixed(2)})
+                </Text>
+              )}
+
+              {hasVarianceInfo && (
+                <View style={styles.actualWeightInfo}>
+                  <Text style={styles.actualWeightText}>
+                    Actual weight: {item.weightInfo?.actualWeight} {item.product?.weightUnit} (${item.weightInfo?.actualPrice?.toFixed(2)})
+                  </Text>
+                  
+                  {item.weightInfo?.variancePercentage !== undefined && item.weightInfo.variancePercentage !== 0 && (
+                    <View style={styles.varianceDisplayInfo}>
+                      <Text style={[
+                        styles.varianceText,
+                        { color: item.weightInfo.variancePercentage > 0 ? '#EA580C' : '#059669' }
+                      ]}>
+                        {item.weightInfo.variancePercentage > 0 ? '+' : ''}{item.weightInfo.variancePercentage.toFixed(1)}% variance
+                      </Text>
+                      
+                      {needsApproval && (
+                        <TouchableOpacity
+                          style={styles.approvalNeededButton}
+                          onPress={() => openVarianceModal(item)}
+                        >
+                          <Ionicons name="alert-circle" size={16} color="#EA580C" />
+                          <Text style={styles.approvalNeededText}>Approval Needed</Text>
+                        </TouchableOpacity>
+                      )}
+                      
+                      {varianceApproved === true && (
+                        <View style={styles.approvedBadge}>
+                          <Ionicons name="checkmark-circle" size={16} color="#059669" />
+                          <Text style={styles.approvedText}>Approved</Text>
+                        </View>
+                      )}
+                      
+                      {varianceApproved === false && (
+                        <View style={styles.rejectedBadge}>
+                          <Ionicons name="close-circle" size={16} color="#DC2626" />
+                          <Text style={styles.rejectedText}>Rejected</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                </View>
+              )}
+              
+              {item.weightInfo?.substitutionReason && (
+                <Text style={styles.weightNotes}>
+                  Note: {item.weightInfo.substitutionReason}
+                </Text>
+              )}
+            </View>
           )}
+
+          {/* Found quantity info */}
+          {shouldShowFound && (
+            <View style={styles.foundQuantityContainer}>
+              <Text style={styles.foundQuantity}>
+                {isWeightBased && item.weightInfo?.actualWeight ? (
+                  // For weight-based items, show actual weight instead of foundQuantity
+                  <>Found: {item.weightInfo.actualWeight} {item.product?.weightUnit}</>
+                ) : (
+                  // For unit-based items, show foundQuantity
+                  <>Found: {item.foundQuantity} {item.item.unit || 'unit'}</>
+                )}
+              </Text>
+              
+              {/* Show variance info for weight-based items in found section */}
+              {isWeightBased && item.weightInfo?.actualWeight && item.weightInfo?.estimatedWeight && 
+               item.weightInfo.actualWeight !== item.weightInfo.estimatedWeight && (
+                <Text style={[
+                  styles.foundVarianceText,
+                  { color: item.weightInfo.actualWeight > item.weightInfo.estimatedWeight ? '#059669' : '#EA580C' }
+                ]}>
+                  {item.weightInfo.actualWeight > item.weightInfo.estimatedWeight ? 
+                    `+${(item.weightInfo.actualWeight - item.weightInfo.estimatedWeight).toFixed(1)} ${item.product?.weightUnit} more` :
+                    `${(item.weightInfo.actualWeight - item.weightInfo.estimatedWeight).toFixed(1)} ${item.product?.weightUnit} less`
+                  }
+                </Text>
+              )}
+            </View>
+          )}
+
+          {/* Regular item notes */}
           {item.notes && (
             <Text style={styles.itemNotes}>Note: {item.notes}</Text>
           )}
@@ -850,8 +1153,21 @@ export default function OrderDetailScreen() {
             <Text style={styles.sectionTitle}>Order Summary</Text>
             <View style={styles.card}>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Subtotal</Text>
-                <Text style={styles.summaryValue}>${order.subtotal.toFixed(2)}</Text>
+                <Text style={styles.summaryLabel}>
+                  Subtotal {order.finalTotal ? '(actual)' : '(estimated)'}
+                </Text>
+                <Text style={styles.summaryValue}>
+                  ${order.finalTotal ? 
+                    order.items.reduce((sum, item) => {
+                      if (item.product?.weightBased && item.weightInfo?.actualPrice) {
+                        return sum + item.weightInfo.actualPrice;
+                      } else {
+                        return sum + (item.finalPrice || item.price) * (item.foundQuantity || item.quantity);
+                      }
+                    }, 0).toFixed(2) : 
+                    order.subtotal.toFixed(2)
+                  }
+                </Text>
               </View>
               
               <View style={styles.summaryRow}>
@@ -876,13 +1192,220 @@ export default function OrderDetailScreen() {
               
               <View style={styles.summaryRow}>
                 <Text style={styles.totalLabel}>Total</Text>
-                <Text style={styles.totalValue}>${order.total.toFixed(2)}</Text>
+                <Text style={styles.totalValue}>
+                  ${(order.finalTotal || order.total).toFixed(2)}
+                </Text>
               </View>
             </View>
           </View>
 
+          {/* Savings Summary (for delivered orders with variances) */}
+          {order.finalTotal && order.finalTotal < order.total && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Your Savings</Text>
+              <View style={styles.card}>
+                <View style={styles.savingsHeader}>
+                  <Ionicons name="pricetag" size={24} color="#059669" />
+                  <View style={styles.savingsInfo}>
+                    <Text style={styles.savingsAmount}>
+                      You saved ${(order.total - order.finalTotal).toFixed(2)}
+                    </Text>
+                    <Text style={styles.savingsDescription}>
+                      Due to weight variances on your order
+                    </Text>
+                  </View>
+                </View>
+                
+                {/* Show variance breakdown */}
+                <View style={styles.savingsBreakdown}>
+                  {order.items
+                    .filter(item => 
+                      item.product?.weightBased && 
+                      item.weightInfo?.actualWeight && 
+                      item.weightInfo?.estimatedWeight &&
+                      item.weightInfo.actualWeight !== item.weightInfo.estimatedWeight
+                    )
+                    .map((item, index) => {
+                      const savings = (item.weightInfo?.estimatedPrice || 0) - (item.weightInfo?.actualPrice || 0);
+                      if (Math.abs(savings) < 0.01) return null;
+                      
+                      return (
+                        <View key={item.id} style={styles.savingsItem}>
+                          <Text style={styles.savingsItemName}>{item.item.name}</Text>
+                          <View style={styles.savingsItemDetails}>
+                            <Text style={styles.savingsItemText}>
+                              {item.weightInfo?.actualWeight} {item.product?.weightUnit} vs {item.weightInfo?.estimatedWeight} {item.product?.weightUnit}
+                            </Text>
+                            <Text style={[
+                              styles.savingsItemAmount,
+                              { color: savings > 0 ? '#059669' : '#EA580C' }
+                            ]}>
+                              {savings > 0 ? '+' : ''}${savings.toFixed(2)}
+                            </Text>
+                          </View>
+                        </View>
+                      );
+                    })}
+                </View>
+                
+                <View style={styles.savingsFooter}>
+                  <Text style={styles.savingsFooterText}>
+                    💡 Weight variances happen naturally - you only pay for what you actually receive!
+                  </Text>
+                </View>
+              </View>
+            </View>
+          )}
+
           <View style={styles.bottomSpacing} />
         </ScrollView>
+
+        {/* Variance Approval Modal */}
+        {selectedVarianceItem && (
+          <Modal
+            visible={varianceModalVisible}
+            animationType="slide"
+            presentationStyle="pageSheet"
+            onRequestClose={closeVarianceModal}
+          >
+            <SafeAreaView style={styles.varianceModalContainer}>
+              <View style={styles.varianceModalHeader}>
+                <TouchableOpacity onPress={closeVarianceModal} style={styles.varianceModalCloseButton}>
+                  <Ionicons name="close" size={24} color="#6B7280" />
+                </TouchableOpacity>
+                <Text style={styles.varianceModalTitle}>Weight Variance Approval</Text>
+                <View style={styles.varianceModalCloseButton} />
+              </View>
+
+              <ScrollView style={styles.varianceModalContent} showsVerticalScrollIndicator={false}>
+                {/* Product Info */}
+                <View style={styles.varianceProductInfo}>
+                  <Text style={styles.varianceProductName}>{selectedVarianceItem.item.name}</Text>
+                  <Text style={styles.varianceProductPrice}>
+                    ${selectedVarianceItem.product?.pricePerUnit?.toFixed(2)} per {selectedVarianceItem.product?.weightUnit}
+                  </Text>
+                </View>
+
+                {/* Weight Comparison */}
+                <View style={styles.varianceComparisonSection}>
+                  <Text style={styles.varianceSectionTitle}>Weight Comparison</Text>
+                  <View style={styles.varianceComparisonCard}>
+                    <View style={styles.varianceComparisonRow}>
+                      <View style={styles.varianceComparisonLeft}>
+                        <Text style={styles.varianceLabel}>You Requested:</Text>
+                        <Text style={styles.varianceEstimatedValue}>
+                          {selectedVarianceItem.weightInfo?.estimatedWeight} {selectedVarianceItem.product?.weightUnit}
+                        </Text>
+                      </View>
+                      <View style={styles.varianceComparisonRight}>
+                        <Text style={styles.varianceEstimatedPrice}>
+                          ${selectedVarianceItem.weightInfo?.estimatedPrice?.toFixed(2)}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.varianceComparisonDivider} />
+
+                    <View style={styles.varianceComparisonRow}>
+                      <View style={styles.varianceComparisonLeft}>
+                        <Text style={styles.varianceLabel}>Actual Weight:</Text>
+                        <Text style={styles.varianceActualValue}>
+                          {selectedVarianceItem.weightInfo?.actualWeight} {selectedVarianceItem.product?.weightUnit}
+                        </Text>
+                      </View>
+                      <View style={styles.varianceComparisonRight}>
+                        <Text style={styles.varianceActualPrice}>
+                          ${selectedVarianceItem.weightInfo?.actualPrice?.toFixed(2)}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Variance Summary */}
+                <View style={styles.varianceSummarySection}>
+                  <Text style={styles.varianceSectionTitle}>Variance Summary</Text>
+                  <View style={styles.varianceSummaryCard}>
+                    <View style={styles.varianceSummaryRow}>
+                      <Text style={styles.varianceSummaryLabel}>Weight Difference:</Text>
+                      <Text style={[
+                        styles.varianceSummaryValue,
+                        { color: (selectedVarianceItem.weightInfo?.variancePercentage || 0) > 0 ? '#EA580C' : '#059669' }
+                      ]}>
+                        {(selectedVarianceItem.weightInfo?.variancePercentage || 0) > 0 ? '+' : ''}
+                        {selectedVarianceItem.weightInfo?.variancePercentage?.toFixed(1)}%
+                      </Text>
+                    </View>
+
+                    <View style={styles.varianceSummaryRow}>
+                      <Text style={styles.varianceSummaryLabel}>Price Difference:</Text>
+                      <Text style={[
+                        styles.varianceSummaryValue,
+                        { color: (selectedVarianceItem.weightInfo?.priceVariance || 0) > 0 ? '#EA580C' : '#059669' }
+                      ]}>
+                        {(selectedVarianceItem.weightInfo?.priceVariance || 0) > 0 ? '+' : ''}
+                        ${Math.abs(selectedVarianceItem.weightInfo?.priceVariance || 0).toFixed(2)}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Driver Note */}
+                {selectedVarianceItem.weightInfo?.substitutionReason && (
+                  <View style={styles.varianceNoteSection}>
+                    <Text style={styles.varianceSectionTitle}>Driver's Note</Text>
+                    <View style={styles.varianceNoteCard}>
+                      <Text style={styles.varianceNoteText}>
+                        {selectedVarianceItem.weightInfo.substitutionReason}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* Explanation */}
+                <View style={styles.varianceExplanationSection}>
+                  <View style={styles.varianceExplanationCard}>
+                    <Ionicons name="information-circle" size={20} color="#0369A1" />
+                    <Text style={styles.varianceExplanationText}>
+                      Your shopper found a different weight than requested. You can approve this variance 
+                      to proceed with the actual weight, or reject it if you prefer the original amount.
+                    </Text>
+                  </View>
+                </View>
+              </ScrollView>
+
+              {/* Action Buttons */}
+              <View style={styles.varianceModalActions}>
+                <TouchableOpacity
+                  style={styles.varianceRejectButton}
+                  onPress={handleRejectVariance}
+                  disabled={approvingVariance}
+                >
+                  <Ionicons name="close-circle" size={20} color="#DC2626" />
+                  <Text style={styles.varianceRejectButtonText}>Reject</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[
+                    styles.varianceApproveButton,
+                    approvingVariance && styles.varianceApproveButtonDisabled
+                  ]}
+                  onPress={handleApproveVariance}
+                  disabled={approvingVariance}
+                >
+                  {approvingVariance ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <Ionicons name="checkmark-circle" size={20} color="white" />
+                  )}
+                  <Text style={styles.varianceApproveButtonText}>
+                    {approvingVariance ? 'Processing...' : 'Approve Variance'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </SafeAreaView>
+          </Modal>
+        )}
       </SafeAreaView>
     </>
   );
@@ -1068,6 +1591,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#F59E0B',
     fontWeight: '500',
+  },
+  foundQuantityContainer: {
+    gap: 2,
+  },
+  foundVarianceText: {
+    fontSize: 12,
+    fontWeight: '500',
+    fontStyle: 'italic',
   },
   itemNotes: {
     fontSize: 14,
@@ -1358,5 +1889,390 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#1F2937',
+  },
+  // Weight-based item styles
+  itemTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  weightBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    gap: 3,
+  },
+  weightBadgeText: {
+    fontSize: 10,
+    color: '#0F766E',
+    fontWeight: '500',
+  },
+  weightBasedDetails: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  pricePerUnitText: {
+    fontSize: 13,
+    color: '#0F766E',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  estimatedWeightText: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  actualWeightInfo: {
+    backgroundColor: '#F0F9FF',
+    padding: 8,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  actualWeightText: {
+    fontSize: 13,
+    color: '#0369A1',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  varianceDisplayInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  varianceText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  approvalNeededButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
+  },
+  approvalNeededText: {
+    fontSize: 11,
+    color: '#EA580C',
+    fontWeight: '600',
+  },
+  approvedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#D1FAE5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
+  },
+  approvedText: {
+    fontSize: 11,
+    color: '#059669',
+    fontWeight: '600',
+  },
+  rejectedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
+  },
+  rejectedText: {
+    fontSize: 11,
+    color: '#DC2626',
+    fontWeight: '600',
+  },
+  weightNotes: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
+  // Savings section styles
+  savingsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  savingsInfo: {
+    flex: 1,
+  },
+  savingsAmount: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#059669',
+    marginBottom: 2,
+  },
+  savingsDescription: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  savingsBreakdown: {
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    paddingTop: 16,
+    gap: 12,
+  },
+  savingsItem: {
+    gap: 4,
+  },
+  savingsItemName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  savingsItemDetails: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  savingsItemText: {
+    fontSize: 13,
+    color: '#6B7280',
+  },
+  savingsItemAmount: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  savingsFooter: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  savingsFooterText: {
+    fontSize: 13,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  // Variance approval modal styles
+  varianceModalContainer: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+  },
+  varianceModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    backgroundColor: 'white',
+  },
+  varianceModalCloseButton: {
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  varianceModalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  varianceModalContent: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  varianceProductInfo: {
+    backgroundColor: 'white',
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  varianceProductName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  varianceProductPrice: {
+    fontSize: 16,
+    color: '#0F766E',
+    fontWeight: '600',
+  },
+  varianceComparisonSection: {
+    marginTop: 16,
+  },
+  varianceSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 8,
+  },
+  varianceComparisonCard: {
+    backgroundColor: 'white',
+    padding: 16,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  varianceComparisonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  varianceComparisonLeft: {
+    flex: 1,
+  },
+  varianceComparisonRight: {
+    alignItems: 'flex-end',
+  },
+  varianceLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 2,
+  },
+  varianceEstimatedValue: {
+    fontSize: 16,
+    color: '#1F2937',
+    fontWeight: '600',
+  },
+  varianceActualValue: {
+    fontSize: 16,
+    color: '#0F766E',
+    fontWeight: '600',
+  },
+  varianceEstimatedPrice: {
+    fontSize: 16,
+    color: '#1F2937',
+    fontWeight: '600',
+  },
+  varianceActualPrice: {
+    fontSize: 16,
+    color: '#0F766E',
+    fontWeight: '600',
+  },
+  varianceComparisonDivider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginVertical: 8,
+  },
+  varianceSummarySection: {
+    marginTop: 16,
+  },
+  varianceSummaryCard: {
+    backgroundColor: 'white',
+    padding: 16,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  varianceSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  varianceSummaryLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  varianceSummaryValue: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  varianceNoteSection: {
+    marginTop: 16,
+  },
+  varianceNoteCard: {
+    backgroundColor: '#F9FAFB',
+    padding: 16,
+    borderRadius: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#6B7280',
+  },
+  varianceNoteText: {
+    fontSize: 14,
+    color: '#374151',
+    lineHeight: 20,
+  },
+  varianceExplanationSection: {
+    marginTop: 16,
+    marginBottom: 20,
+  },
+  varianceExplanationCard: {
+    flexDirection: 'row',
+    backgroundColor: '#F0F9FF',
+    padding: 16,
+    borderRadius: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#0369A1',
+    gap: 12,
+  },
+  varianceExplanationText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#0369A1',
+    lineHeight: 20,
+  },
+  varianceModalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    backgroundColor: 'white',
+  },
+  varianceRejectButton: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#DC2626',
+    backgroundColor: 'white',
+    gap: 8,
+  },
+  varianceRejectButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#DC2626',
+  },
+  varianceApproveButton: {
+    flex: 2,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#0F766E',
+    gap: 8,
+  },
+  varianceApproveButtonDisabled: {
+    backgroundColor: '#9CA3AF',
+  },
+  varianceApproveButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: 'white',
   },
 }); 

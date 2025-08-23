@@ -93,16 +93,50 @@ export default function DriverDashboard() {
           // Set active order from the list if exists
           if (activeOrdersList.length > 0) {
             const activeOrderData = activeOrdersList[0];
-            setActiveOrder({
-              id: activeOrderData.id,
-              customerName: activeOrderData.customerName,
-              status: activeOrderData.status,
-              progress: 0, // Will be calculated if needed
-              totalItems: activeOrderData.itemCount,
-              estimatedPayout: activeOrderData.estimatedPayout,
-              deliveryAddress: activeOrderData.deliveryAddress,
-              timeElapsed: calculateTimeElapsed(activeOrderData.createdAt),
-            });
+            
+            // Fetch detailed order data for progress calculation
+            try {
+              const detailResponse = await ordersAPI.getById(activeOrderData.id);
+              if (detailResponse.data) {
+                const detailedOrder = detailResponse.data as any;
+                const progress = calculateProgress(detailedOrder);
+                setActiveOrder({
+                  id: activeOrderData.id,
+                  customerName: activeOrderData.customerName,
+                  status: activeOrderData.status,
+                  progress: progress,
+                  totalItems: detailedOrder.items?.length || activeOrderData.itemCount,
+                  estimatedPayout: activeOrderData.estimatedPayout,
+                  deliveryAddress: activeOrderData.deliveryAddress,
+                  timeElapsed: calculateTimeElapsed(activeOrderData.createdAt),
+                });
+              } else {
+                // Fallback to basic data without progress
+                setActiveOrder({
+                  id: activeOrderData.id,
+                  customerName: activeOrderData.customerName,
+                  status: activeOrderData.status,
+                  progress: 0,
+                  totalItems: activeOrderData.itemCount,
+                  estimatedPayout: activeOrderData.estimatedPayout,
+                  deliveryAddress: activeOrderData.deliveryAddress,
+                  timeElapsed: calculateTimeElapsed(activeOrderData.createdAt),
+                });
+              }
+            } catch (error) {
+              console.error('Failed to fetch detailed order for progress:', error);
+              // Fallback to basic data
+              setActiveOrder({
+                id: activeOrderData.id,
+                customerName: activeOrderData.customerName,
+                status: activeOrderData.status,
+                progress: 0,
+                totalItems: activeOrderData.itemCount,
+                estimatedPayout: activeOrderData.estimatedPayout,
+                deliveryAddress: activeOrderData.deliveryAddress,
+                timeElapsed: calculateTimeElapsed(activeOrderData.createdAt),
+              });
+            }
             setAvailableOrders([]); // Don't show available orders when driver has active order
           } else {
             setActiveOrder(null);
@@ -168,7 +202,7 @@ export default function DriverDashboard() {
     
     // Count items that have been processed (found, substituted, or unavailable)
     const processedItems = order.items.filter((item: any) => 
-      item.status && ['found', 'substituted', 'unavailable'].includes(item.status)
+      item.foundQuantity !== null
     ).length;
     
     return Math.min(processedItems, order.items.length);
