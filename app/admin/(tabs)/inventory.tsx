@@ -285,30 +285,6 @@ export default function AdminInventory() {
     setCategoryDropdownOpen(false);
   };
 
-  const selectUnit = (unitName: string) => {
-    if (unitName === 'Add New Unit...') {
-      setShowNewUnitInput(true);
-    } else {
-      const selectedUnit = availableUnits.find(unit => unit.name === unitName);
-      
-      // Auto-detect weight-based products (when unit is "pound")
-      const isWeightBased = unitName === 'pound';
-      
-      setNewProduct(prev => ({ 
-        ...prev, 
-        unit: unitName,
-        unitId: selectedUnit?.id,
-        // Auto-configure weight-based settings
-        weightBased: isWeightBased,
-        pricePerUnit: isWeightBased ? prev.price : '',
-        weightUnit: isWeightBased ? 'lb' : '',
-        minWeight: isWeightBased ? '0.5' : '',
-        maxWeight: isWeightBased ? '5.0' : '',
-      }));
-    }
-    setUnitDropdownOpen(false);
-  };
-
   const submitProductUpdate = async () => {
     if (!editingProductId) return;
     try {
@@ -379,10 +355,20 @@ export default function AdminInventory() {
       setShowNewUnitInput(true);
     } else {
       const selectedUnit = availableUnits.find(unit => unit.name === unitName);
+      
+      // Auto-detect weight-based products (when unit is "pound")
+      const isWeightBased = unitName === 'pound';
+      
       setNewProduct(prev => ({ 
         ...prev, 
         unit: unitName,
-        unitId: selectedUnit?.id
+        unitId: selectedUnit?.id,
+        // Auto-configure weight-based settings
+        weightBased: isWeightBased,
+        pricePerUnit: isWeightBased ? prev.price : '',
+        weightUnit: isWeightBased ? 'lb' : '',
+        minWeight: isWeightBased ? '0.5' : '',
+        maxWeight: isWeightBased ? '5.0' : '',
       }));
     }
     setUnitDropdownOpen(false);
