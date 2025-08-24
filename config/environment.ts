@@ -22,7 +22,8 @@ const getBaseApiUrl = () => {
       return 'http://localhost:3000/api/v1';
     } else {
       // For mobile in Expo Go
-      return 'http://192.168.1.190:3000/api/v1';
+      // return 'http://192.168.1.190:3000/api/v1';
+      return 'http://172.20.10.3:3000/api/v1';
     }
   }
   

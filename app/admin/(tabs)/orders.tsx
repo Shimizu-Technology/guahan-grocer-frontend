@@ -1518,6 +1518,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     flex: 1,
+    marginRight: 12,
   },
   receiptText: {
     fontSize: 16,
@@ -1539,6 +1540,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#0F766E',
     backgroundColor: '#F0FDF4',
+    flexShrink: 0,
   },
   viewReceiptText: {
     fontSize: 12,
