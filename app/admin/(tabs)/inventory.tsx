@@ -79,7 +79,7 @@ export default function AdminInventory() {
     description: '',
     stockQuantity: '',
     unit: '',
-    trackInventory: true,
+    trackInventory: false,
   });
 
   // Keep refs for current selection when editing so we can show existing image
@@ -235,7 +235,7 @@ export default function AdminInventory() {
       description: '',
       stockQuantity: '',
       unit: '',
-      trackInventory: true,
+      trackInventory: false,
     });
     setSelectedProductImageUrl(null);
     setSelectedProductImgixUrl(null);
