@@ -52,6 +52,12 @@ interface NewProduct {
   unitId?: number;
   image?: ImagePicker.ImagePickerAsset;
   trackInventory: boolean;
+  // Weight-based fields
+  weightBased: boolean;
+  pricePerUnit: string;
+  weightUnit: string;
+  minWeight: string;
+  maxWeight: string;
 }
 
 export default function AdminInventory() {
@@ -80,6 +86,12 @@ export default function AdminInventory() {
     stockQuantity: '',
     unit: '',
     trackInventory: false,
+    // Weight-based defaults
+    weightBased: false,
+    pricePerUnit: '',
+    weightUnit: 'lb',
+    minWeight: '0.5',
+    maxWeight: '5.0',
   });
 
   // Keep refs for current selection when editing so we can show existing image
@@ -236,6 +248,12 @@ export default function AdminInventory() {
       stockQuantity: '',
       unit: '',
       trackInventory: false,
+      // Weight-based defaults
+      weightBased: false,
+      pricePerUnit: '',
+      weightUnit: 'lb',
+      minWeight: '0.5',
+      maxWeight: '5.0',
     });
     setSelectedProductImageUrl(null);
     setSelectedProductImgixUrl(null);
@@ -267,6 +285,30 @@ export default function AdminInventory() {
     setCategoryDropdownOpen(false);
   };
 
+  const selectUnit = (unitName: string) => {
+    if (unitName === 'Add New Unit...') {
+      setShowNewUnitInput(true);
+    } else {
+      const selectedUnit = availableUnits.find(unit => unit.name === unitName);
+      
+      // Auto-detect weight-based products (when unit is "pound")
+      const isWeightBased = unitName === 'pound';
+      
+      setNewProduct(prev => ({ 
+        ...prev, 
+        unit: unitName,
+        unitId: selectedUnit?.id,
+        // Auto-configure weight-based settings
+        weightBased: isWeightBased,
+        pricePerUnit: isWeightBased ? prev.price : '',
+        weightUnit: isWeightBased ? 'lb' : '',
+        minWeight: isWeightBased ? '0.5' : '',
+        maxWeight: isWeightBased ? '5.0' : '',
+      }));
+    }
+    setUnitDropdownOpen(false);
+  };
+
   const submitProductUpdate = async () => {
     if (!editingProductId) return;
     try {
@@ -279,6 +321,15 @@ export default function AdminInventory() {
       formData.append('product[track_inventory]', newProduct.trackInventory.toString());
       if (newProduct.trackInventory) formData.append('product[stock_quantity]', newProduct.stockQuantity);
       if (newProduct.unitId) formData.append('product[unit_id]', newProduct.unitId.toString());
+      
+      // Add weight-based fields for updates too
+      formData.append('product[weight_based]', newProduct.weightBased.toString());
+      if (newProduct.weightBased) {
+        formData.append('product[price_per_unit]', newProduct.pricePerUnit || newProduct.price);
+        formData.append('product[weight_unit]', newProduct.weightUnit);
+        formData.append('product[min_weight]', newProduct.minWeight);
+        formData.append('product[max_weight]', newProduct.maxWeight);
+      }
       if (newProduct.image) {
         formData.append('product[image]', { uri: newProduct.image.uri, type: 'image/jpeg', name: 'product-image.jpg' } as any);
       }
@@ -402,6 +453,15 @@ export default function AdminInventory() {
       }
       if (newProduct.unitId) {
         formData.append('product[unit_id]', newProduct.unitId.toString());
+      }
+      
+      // Add weight-based fields
+      formData.append('product[weight_based]', newProduct.weightBased.toString());
+      if (newProduct.weightBased) {
+        formData.append('product[price_per_unit]', newProduct.pricePerUnit || newProduct.price);
+        formData.append('product[weight_unit]', newProduct.weightUnit);
+        formData.append('product[min_weight]', newProduct.minWeight);
+        formData.append('product[max_weight]', newProduct.maxWeight);
       }
 
       if (newProduct.image) {
