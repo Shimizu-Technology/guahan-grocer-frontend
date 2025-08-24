@@ -200,10 +200,16 @@ export default function DriverDashboard() {
   const calculateProgress = (order: any): number => {
     if (!order.items || order.items.length === 0) return 0;
     
-    // Count items that have been processed (found, substituted, or unavailable)
-    const processedItems = order.items.filter((item: any) => 
-      item.foundQuantity !== null
-    ).length;
+    // Count items that are truly complete (considering weight-based variance approval)
+    const processedItems = order.items.filter((item: any) => {
+      // For weight-based items, check if weight is verified AND variance is approved (or doesn't need approval)
+      if (item.product?.weightBased) {
+        return item.weightInfo?.actualWeight && 
+               (item.weightInfo?.varianceApproved === true || item.weightInfo?.needsApproval === false);
+      }
+      // For unit-based items, check if foundQuantity is set
+      return item.foundQuantity !== null && item.foundQuantity > 0;
+    }).length;
     
     return Math.min(processedItems, order.items.length);
   };
