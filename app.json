@@ -16,7 +16,7 @@
       "backgroundColor": "#0F766E"
     },
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.shimizutechnology.guahangrocer",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
