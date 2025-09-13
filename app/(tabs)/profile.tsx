@@ -7,6 +7,7 @@ import {
   SafeAreaView,
   Alert,
   ScrollView,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -15,9 +16,10 @@ import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { useFavorites } from '../../context/FavoritesContext';
 import { useNotifications } from '../../context/NotificationContext';
+import config from '../../config/environment';
 
 export default function ProfileScreen() {
-  const { user, logout } = useAuth();
+  const { user, logout, token } = useAuth();
   const { itemCount, total } = useCart();
   const { favoritesCount } = useFavorites();
   const { unreadCount } = useNotifications();
@@ -54,6 +56,55 @@ export default function ProfileScreen() {
     );
   };
 
+  const handleDeleteAccount = async () => {
+    Alert.alert(
+      'Delete Account',
+      'Are you sure you want to permanently delete your account? This action cannot be undone.\n\n• All your personal data will be removed\n• Your order history will be anonymized\n• You will be immediately signed out',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete Account', 
+          style: 'destructive', 
+          onPress: confirmDeleteAccount 
+        }
+      ]
+    );
+  };
+
+  const confirmDeleteAccount = async () => {
+    try {
+      const response = await fetch(`${config.API_BASE_URL}/auth/delete_account`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        Alert.alert(
+          'Account Deleted',
+          'Your account has been successfully deleted. You will now be signed out.',
+          [{ text: 'OK', onPress: logout }]
+        );
+      } else {
+        Alert.alert(
+          'Error',
+          data.errors?.[0] || 'Failed to delete account. Please try again.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      Alert.alert(
+        'Error',
+        'Network error. Please check your connection and try again.',
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
   const statsData = [
     {
       icon: 'bag-outline',
@@ -70,7 +121,7 @@ export default function ProfileScreen() {
     {
       icon: 'card-outline',
       label: 'Cart Total',
-      value: `$${total.toFixed(2)}`,
+      value: total > 999 ? `$${(total/1000).toFixed(1)}k` : `$${total.toFixed(2)}`,
       color: '#8B5CF6'
     },
     {
@@ -123,6 +174,13 @@ export default function ProfileScreen() {
       label: 'Help & Support',
       subtitle: 'Get help and contact support',
       onPress: () => Alert.alert('Feature Coming Soon', 'Help & support will be available soon!')
+    },
+    {
+      icon: 'trash-outline',
+      label: 'Delete Account',
+      subtitle: 'Permanently delete your account and data',
+      onPress: handleDeleteAccount,
+      isDestructive: true
     }
   ];
 
@@ -153,7 +211,9 @@ export default function ProfileScreen() {
           <View style={styles.statsGrid}>
             {statsData.map((stat, index) => (
               <View key={index} style={styles.statCard}>
-                <Ionicons name={stat.icon as any} size={24} color={stat.color} />
+                <View style={styles.statIconContainer}>
+                  <Ionicons name={stat.icon as any} size={20} color={stat.color} />
+                </View>
                 <Text style={styles.statValue}>{stat.value}</Text>
                 <Text style={styles.statLabel}>{stat.label}</Text>
               </View>
@@ -172,10 +232,19 @@ export default function ProfileScreen() {
             >
               <View style={styles.menuItemLeft}>
                 <View style={styles.menuItemIcon}>
-                  <Ionicons name={item.icon as any} size={24} color="#6B7280" />
+                  <Ionicons 
+                    name={item.icon as any} 
+                    size={24} 
+                    color={item.isDestructive ? "#EF4444" : "#6B7280"} 
+                  />
                 </View>
                 <View style={styles.menuItemText}>
-                  <Text style={styles.menuItemLabel}>{item.label}</Text>
+                  <Text style={[
+                    styles.menuItemLabel,
+                    item.isDestructive && { color: '#EF4444' }
+                  ]}>
+                    {item.label}
+                  </Text>
                   <Text style={styles.menuItemSubtitle}>{item.subtitle}</Text>
                 </View>
               </View>
@@ -267,7 +336,8 @@ const styles = StyleSheet.create({
   },
   statsSection: {
     paddingHorizontal: 20,
-    paddingVertical: 24,
+    paddingTop: 20,
+    paddingBottom: 24,
   },
   sectionTitle: {
     fontSize: 18,
@@ -277,31 +347,44 @@ const styles = StyleSheet.create({
   },
   statsGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 12,
+    justifyContent: 'space-between',
   },
   statCard: {
-    flex: 1,
+    width: '48%', // Two cards per row with gap
     backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 12,
+    padding: 12,
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+    minHeight: 80,
+    justifyContent: 'center',
+  },
+  statIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F8FAFC',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 6,
   },
   statValue: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#1F2937',
-    marginTop: 8,
+    marginBottom: 2,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 10,
     color: '#6B7280',
     textAlign: 'center',
-    marginTop: 4,
+    lineHeight: 12,
   },
   menuSection: {
     paddingHorizontal: 20,
