@@ -61,7 +61,8 @@
       "expo-router",
       "expo-location",
       "expo-image-picker",
-      "expo-camera"
+      "expo-camera",
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true

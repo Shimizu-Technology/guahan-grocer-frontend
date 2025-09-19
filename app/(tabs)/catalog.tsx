@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, router } from 'expo-router';
+import { usePostHog } from 'posthog-react-native';
 
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
@@ -31,6 +32,7 @@ export default function CatalogScreen() {
   const { user } = useAuth();
   const { addItem } = useCart();
   const { addToFavorites, removeFromFavorites, isFavorite } = useFavorites();
+  const posthog = usePostHog();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -195,9 +197,32 @@ export default function CatalogScreen() {
       
       // Add weight-based item with selected weight as quantity
       addItem(item, weight);
+      
+      // Track add to cart event
+      posthog.capture('Product Added to Cart', {
+        product_id: item.id,
+        product_name: item.name,
+        category: item.category,
+        price: item.pricePerUnit || item.price,
+        quantity: weight,
+        weight_based: true,
+        weight_unit: item.weightUnit || null,
+        source: 'catalog'
+      });
     } else {
       // Add unit-based item with selected quantity
       addItem(item, selectedQuantity);
+      
+      // Track add to cart event
+      posthog.capture('Product Added to Cart', {
+        product_id: item.id,
+        product_name: item.name,
+        category: item.category,
+        price: item.price,
+        quantity: selectedQuantity,
+        weight_based: false,
+        source: 'catalog'
+      });
     }
   };
 
@@ -231,6 +256,18 @@ export default function CatalogScreen() {
   const openModal = (item: Item) => {
     setSelectedItem(item);
     setModalVisible(true);
+    
+    // Track product view
+    posthog.capture('Product Viewed', {
+      product_id: item.id,
+      product_name: item.name,
+      category: item.category,
+      price: item.price,
+      weight_based: item.weightBased || false,
+      has_enhanced_data: item.enhanced ? true : false,
+      source: 'catalog'
+    });
+    
     // Reset quantity/weight when opening modal
     if (item.weightBased) {
       setSelectedWeight(0.5); // Start at 0.5 lb
@@ -244,6 +281,34 @@ export default function CatalogScreen() {
     setSelectedItem(null);
     setSelectedWeight(0.5);
     setSelectedQuantity(1);
+  };
+
+  const handleCategoryChange = (category: string) => {
+    setSelectedCategory(category);
+    
+    // Track category selection
+    posthog.capture('Category Selected', {
+      category: category,
+      previous_category: selectedCategory,
+      source: 'catalog'
+    });
+  };
+
+  const handleSearch = (text: string) => {
+    setSearchTerm(text);
+    
+    // Track search if text is meaningful (3+ characters)
+    if (text.length >= 3) {
+      posthog.capture('Product Search', {
+        search_term: text,
+        category: selectedCategory,
+        results_count: products.filter(item => 
+          item.name.toLowerCase().includes(text.toLowerCase()) &&
+          (selectedCategory === 'All' || item.category === selectedCategory)
+        ).length,
+        source: 'catalog'
+      });
+    }
   };
 
   // Loading state
@@ -368,7 +433,7 @@ export default function CatalogScreen() {
         styles.categoryFilter,
         selectedCategory === item && styles.categoryFilterActive
       ]}
-      onPress={() => setSelectedCategory(item)}
+      onPress={() => handleCategoryChange(item)}
     >
       <Text 
         style={[
@@ -399,7 +464,7 @@ export default function CatalogScreen() {
           style={styles.searchInput}
           placeholder="Search products..."
           value={searchTerm}
-          onChangeText={setSearchTerm}
+          onChangeText={handleSearch}
         />
       </View>
 

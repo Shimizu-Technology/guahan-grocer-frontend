@@ -5,12 +5,14 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
+import { PostHogProvider } from 'posthog-react-native';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import { AuthProvider } from '../context/AuthContext';
 import { CartProvider } from '../context/CartContext';
 import { FavoritesProvider } from '../context/FavoritesContext';
 import { NotificationProvider } from '../context/NotificationContext';
+import { config } from '../config/environment';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -47,15 +49,25 @@ export default function RootLayout() {
   }
 
   return (
-    <AuthProvider>
-      <NotificationProvider>
-        <CartProvider>
-          <FavoritesProvider>
-            <RootLayoutNav />
-          </FavoritesProvider>
-        </CartProvider>
-      </NotificationProvider>
-    </AuthProvider>
+    <PostHogProvider 
+      apiKey={config.POSTHOG_API_KEY} 
+      options={{
+        host: config.POSTHOG_HOST,
+        // Additional PostHog options can be added here
+        // Capture lifecycle events
+        captureAppLifecycleEvents: true,
+      }}
+    >
+      <AuthProvider>
+        <NotificationProvider>
+          <CartProvider>
+            <FavoritesProvider>
+              <RootLayoutNav />
+            </FavoritesProvider>
+          </CartProvider>
+        </NotificationProvider>
+      </AuthProvider>
+    </PostHogProvider>
   );
 }
 

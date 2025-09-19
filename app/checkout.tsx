@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, Stack } from 'expo-router';
+import { usePostHog } from 'posthog-react-native';
 
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -23,6 +24,7 @@ import { Address } from '../types';
 export default function CheckoutScreen() {
   const { items, total, clearCart } = useCart();
   const { user } = useAuth();
+  const posthog = usePostHog();
   
   // Address Form State
   const [streetAddress, setStreetAddress] = useState('');
@@ -224,6 +226,21 @@ export default function CheckoutScreen() {
     return () => clearTimeout(timeoutId);
   }, [streetAddress, apartmentUnit, city, state, zipCode]);
 
+  // Track checkout page view
+  useEffect(() => {
+    posthog.capture('Checkout Started', {
+      cart_value: total,
+      item_count: items.length,
+      items: items.map(item => ({
+        product_id: item.item.id,
+        product_name: item.item.name,
+        category: item.item.category,
+        quantity: item.quantity,
+        price: item.item.price
+      }))
+    });
+  }, []);
+
   // Handle getting current location
   const handleUseCurrentLocation = async () => {
     setIsGettingLocation(true);
@@ -314,6 +331,17 @@ export default function CheckoutScreen() {
 
     setIsProcessing(true);
     
+    // Track order placement attempt
+    posthog.capture('Order Placement Started', {
+      cart_value: total,
+      delivery_fee: shouldShowDeliveryFee ? deliveryFee : 0,
+      tip_amount: tipAmount,
+      final_total: finalTotal,
+      item_count: items.length,
+      delivery_window: deliveryWindow,
+      has_delivery_instructions: !!deliveryInstructions
+    });
+    
     try {
       // Prepare order data
       const orderData = {
@@ -359,6 +387,18 @@ export default function CheckoutScreen() {
           
           if (paymentResponse.data) {
             console.log('✅ Payment authorized:', paymentResponse.data);
+            
+            // Track successful order completion
+            posthog.capture('Order Completed', {
+              order_id: createdOrder.id,
+              cart_value: total,
+              delivery_fee: shouldShowDeliveryFee ? deliveryFee : 0,
+              tip_amount: tipAmount,
+              final_total: finalTotal,
+              item_count: items.length,
+              payment_method: 'stripe',
+              delivery_window: deliveryWindow
+            });
             
             // Navigate to confirmation screen
             try {

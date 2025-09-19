@@ -14,12 +14,14 @@ import {
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { router } from 'expo-router';
+import { usePostHog } from 'posthog-react-native';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { login, user } = useAuth();
+  const posthog = usePostHog();
 
   // Redirect if already authenticated
   React.useEffect(() => {
@@ -41,10 +43,28 @@ export default function LoginScreen() {
     }
 
     setIsLoading(true);
+    
+    // Track login attempt
+    posthog.capture('Login Attempted', {
+      email_domain: email.split('@')[1] || 'unknown'
+    });
+    
     try {
       await login(email, password);
+      
+      // Track successful login
+      posthog.capture('Login Successful', {
+        email_domain: email.split('@')[1] || 'unknown'
+      });
+      
       // Navigation will be handled by the useEffect above
     } catch (err) {
+      // Track failed login
+      posthog.capture('Login Failed', {
+        email_domain: email.split('@')[1] || 'unknown',
+        error: 'Invalid credentials'
+      });
+      
       Alert.alert('Login Failed', 'Invalid email or password');
     } finally {
       setIsLoading(false);

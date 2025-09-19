@@ -45,8 +45,10 @@ export const config = {
   IS_DEVELOPMENT: isDevelopment,
   IS_PRODUCTION: !isDevelopment,
   
-  // Future configurations
+  // Third-party service keys
   STRIPE_PUBLISHABLE_KEY: process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '',
+  POSTHOG_API_KEY: process.env.EXPO_PUBLIC_POSTHOG_API_KEY || '',
+  POSTHOG_HOST: 'https://us.i.posthog.com',
   
   // Timeouts and limits
   API_TIMEOUT: 10000, // 10 seconds
