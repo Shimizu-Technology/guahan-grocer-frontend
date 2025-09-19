@@ -52,6 +52,29 @@ export interface Item {
     display_text: string;
     fixed_price?: number;
   };
+  // Enhanced Open Food Facts data
+  enhanced?: {
+    brand?: string;
+    size?: string;
+    gtin?: string;
+    servingSize?: string;
+    ingredients?: string;
+    allergens?: string;
+    traces?: string;
+    packaging?: string;
+    nutriscoreGrade?: string;
+    novaGroup?: number;
+    novaDisplay?: string;
+    hasNutritionData?: boolean;
+    hasAllergenInfo?: boolean;
+    hasHealthScores?: boolean;
+    isFoodProduct?: boolean;
+    caloriesPer100g?: number;
+    imageUrls?: string[];
+    imageIngredientsUrl?: string;
+    imageNutritionUrl?: string;
+    hasMultipleImages?: boolean;
+  };
 }
 
 export interface CartItem {

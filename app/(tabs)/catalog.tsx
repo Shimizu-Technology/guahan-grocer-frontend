@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -22,6 +23,8 @@ import { useFavorites } from '../../context/FavoritesContext';
 import { productsAPI, categoriesAPI } from '../../services/api';
 import { Item } from '../../types';
 import SimpleImage from '../../components/shared/SimpleImage';
+import ImageCarousel from '../../components/shared/ImageCarousel';
+import EnhancedProductInfo from '../../components/shared/EnhancedProductInfo';
 
 export default function CatalogScreen() {
   const { category, productId } = useLocalSearchParams();
@@ -72,6 +75,8 @@ export default function CatalogScreen() {
           minWeight: product.minWeight ? parseFloat(product.minWeight) : undefined,
           maxWeight: product.maxWeight ? parseFloat(product.maxWeight) : undefined,
           weightRange: product.weightRange,
+          // Enhanced Open Food Facts data
+          enhanced: product.enhanced,
           priceInfo: product.priceInfo,
         }));
         setProducts(formattedProducts);
@@ -275,12 +280,24 @@ export default function CatalogScreen() {
   }
 
   const renderItem = ({ item }: { item: Item }) => (
-    <TouchableOpacity style={styles.itemCard} onPress={() => openModal(item)}>
-      <SimpleImage 
-        src={item.imageUrl} 
-        style={styles.itemImage}
-        accessibilityLabel={`${item.name} product image`}
-      />
+      <TouchableOpacity style={styles.itemCard} onPress={() => openModal(item)}>
+        {/* Enhanced image display with carousel for multiple images */}
+        {item.enhanced?.hasMultipleImages ? (
+        <ImageCarousel
+          images={item.enhanced.imageUrls || [item.imageUrl].filter(Boolean) as string[]}
+          style={styles.itemImage}
+          imageStyle={{ height: 120, borderTopLeftRadius: 16, borderTopRightRadius: 16 }}
+          accessibilityLabel={`${item.name} product images`}
+          showIndicators={true}
+          showNavigation={false}
+        />
+      ) : (
+        <SimpleImage 
+          src={item.imageUrl} 
+          style={styles.itemImage}
+          accessibilityLabel={`${item.name} product image`}
+        />
+      )}
       
       <TouchableOpacity
         style={styles.favoriteButton}
@@ -296,6 +313,11 @@ export default function CatalogScreen() {
       <View style={styles.itemInfo}>
         <View style={styles.itemTextContent}>
           <Text style={styles.itemName} numberOfLines={2} ellipsizeMode="tail">{item.name}</Text>
+          
+          {/* Enhanced product info (minimal - only brand and size) */}
+          {item.enhanced && (
+            <EnhancedProductInfo item={item} minimal={true} />
+          )}
           
           {/* Simplified pricing display */}
           <View style={styles.pricingContainer}>
@@ -338,7 +360,7 @@ export default function CatalogScreen() {
         </TouchableOpacity>
       </View>
     </TouchableOpacity>
-  );
+    );
 
   const renderCategoryFilter = ({ item }: { item: string }) => (
     <TouchableOpacity
@@ -431,51 +453,99 @@ export default function CatalogScreen() {
                   <Ionicons name="close" size={24} color="#6B7280" />
                 </TouchableOpacity>
                 
-                <SimpleImage 
-                  src={selectedItem.imageUrl} 
-                  style={styles.modalImage}
-                  accessibilityLabel={`${selectedItem.name} detailed image`}
-                />
+                <ScrollView 
+                  style={styles.modalScrollView}
+                  showsVerticalScrollIndicator={false}
+                  bounces={false}
+                  contentContainerStyle={styles.modalScrollContent}
+                >
+                
+                {/* Enhanced image display with carousel */}
+                {selectedItem.enhanced?.hasMultipleImages ? (
+                  <ImageCarousel
+                    images={selectedItem.enhanced.imageUrls || [selectedItem.imageUrl].filter(Boolean) as string[]}
+                    style={styles.modalImage}
+                    imageStyle={{ height: 220, borderTopLeftRadius: 24, borderTopRightRadius: 24 }}
+                    accessibilityLabel={`${selectedItem.name} detailed images`}
+                    showIndicators={true}
+                    showNavigation={true}
+                  />
+                ) : (
+                  <SimpleImage 
+                    src={selectedItem.imageUrl} 
+                    style={styles.modalImage}
+                    accessibilityLabel={`${selectedItem.name} detailed image`}
+                  />
+                )}
                 
                 <View style={styles.modalInfo}>
-                  <Text style={styles.modalTitle}>{selectedItem.name}</Text>
-                  
-                  {/* Simplified pricing display */}
-                  <View style={styles.modalPriceRow}>
-                    <Text style={styles.modalPrice}>
-                      ${selectedItem.weightBased 
-                        ? (selectedItem.pricePerUnit?.toFixed(2) || selectedItem.price.toFixed(2))
-                        : selectedItem.price.toFixed(2)
-                      }
-                    </Text>
-                    <Text style={styles.modalUnit}>
-                      per {selectedItem.weightBased 
-                        ? (selectedItem.weightUnit || selectedItem.unit)
-                        : selectedItem.unit
-                      }
-                    </Text>
+                  {/* Product Header */}
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>{selectedItem.name}</Text>
+                    
+                    {/* Enhanced brand and size info */}
+                    {selectedItem.enhanced && (
+                      <View style={styles.modalBrandSize}>
+                        {selectedItem.enhanced.brand && (
+                          <Text style={styles.modalBrand}>{selectedItem.enhanced.brand}</Text>
+                        )}
+                        {selectedItem.enhanced.size && (
+                          <Text style={styles.modalSize}>{selectedItem.enhanced.size}</Text>
+                        )}
+                      </View>
+                    )}
+                    
+                    {/* Price */}
+                    <View style={styles.modalPriceRow}>
+                      <Text style={styles.modalPrice}>
+                        ${selectedItem.weightBased 
+                          ? (selectedItem.pricePerUnit?.toFixed(2) || selectedItem.price.toFixed(2))
+                          : selectedItem.price.toFixed(2)
+                        }
+                      </Text>
+                      <Text style={styles.modalUnit}>
+                        per {selectedItem.weightBased 
+                          ? (selectedItem.weightUnit || selectedItem.unit)
+                          : selectedItem.unit
+                        }
+                      </Text>
+                    </View>
                   </View>
                   
-                  <View style={styles.modalCategory}>
-                    <Ionicons name="pricetag-outline" size={16} color="#6B7280" />
-                    <Text style={styles.modalCategoryText}>{selectedItem.category}</Text>
+                  {/* Category and Stock Status */}
+                  <View style={styles.modalMetaRow}>
+                    <View style={styles.modalCategory}>
+                      <Ionicons name="pricetag-outline" size={16} color="#6B7280" />
+                      <Text style={styles.modalCategoryText}>{selectedItem.category}</Text>
+                    </View>
+                    
+                    <View style={styles.modalStockInfo}>
+                      <Ionicons 
+                        name={selectedItem.inStock ? "checkmark-circle" : "close-circle"} 
+                        size={16} 
+                        color={selectedItem.inStock ? "#10B981" : "#EF4444"} 
+                      />
+                      <Text style={[
+                        styles.modalStockText,
+                        { color: selectedItem.inStock ? "#10B981" : "#EF4444" }
+                      ]}>
+                        {selectedItem.inStock ? "In Stock" : "Out of Stock"}
+                      </Text>
+                    </View>
                   </View>
                   
-                  <Text style={styles.modalDescription}>{selectedItem.description}</Text>
+                  {/* Enhanced product information */}
+                  {selectedItem.enhanced && (
+                    <View style={styles.modalEnhancedSection}>
+                      <EnhancedProductInfo item={selectedItem} compact={false} />
+                    </View>
+                  )}
                   
-                  <View style={styles.modalStockInfo}>
-                    <Ionicons 
-                      name={selectedItem.inStock ? "checkmark-circle" : "close-circle"} 
-                      size={16} 
-                      color={selectedItem.inStock ? "#10B981" : "#EF4444"} 
-                    />
-                    <Text style={[
-                      styles.modalStockText,
-                      { color: selectedItem.inStock ? "#10B981" : "#EF4444" }
-                    ]}>
-                      {selectedItem.inStock ? "In Stock" : "Out of Stock"}
-                    </Text>
-                  </View>
+                  {selectedItem.description && (
+                    <View style={styles.modalDescriptionSection}>
+                      <Text style={styles.modalDescription}>{selectedItem.description}</Text>
+                    </View>
+                  )}
                   
                   {/* Quantity Selection */}
                   {selectedItem.inStock && (
@@ -582,6 +652,7 @@ export default function CatalogScreen() {
                     </TouchableOpacity>
                   </View>
                 </View>
+                </ScrollView>
               </>
             )}
           </View>
@@ -726,7 +797,7 @@ const styles = StyleSheet.create({
   },
   itemCard: {
     width: '47%',
-    height: 260,
+    height: 300, // Increased from 260 to give more space
     backgroundColor: 'white',
     borderRadius: 16,
     marginBottom: 16,
@@ -758,11 +829,12 @@ const styles = StyleSheet.create({
   },
   itemInfo: {
     flex: 1,
-    padding: 10,
+    padding: 12, // Increased padding
     justifyContent: 'space-between',
   },
   itemTextContent: {
     flex: 1,
+    marginBottom: 8, // Add space before add to cart button
   },
   itemName: {
     fontSize: 14,
@@ -809,11 +881,57 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 400,
     maxHeight: '85%',
+    minHeight: 400, // Add minimum height to ensure visibility
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.3,
     shadowRadius: 20,
     elevation: 20,
+    overflow: 'hidden', // Ensure content doesn't overflow rounded corners
+  },
+  modalScrollView: {
+    // Remove flex: 1 to allow content to determine size
+  },
+  modalScrollContent: {
+    paddingBottom: 20, // Add padding at bottom
+  },
+  modalHeader: {
+    marginBottom: 16,
+  },
+  modalBrandSize: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  modalBrand: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  modalSize: {
+    fontSize: 14,
+    color: '#6B7280',
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  modalMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  modalEnhancedSection: {
+    marginBottom: 16,
+  },
+  modalDescriptionSection: {
+    marginBottom: 16,
   },
   closeButton: {
     position: 'absolute',

@@ -34,6 +34,7 @@ class ApiService {
     try {
       const data = await response.json();
       
+      
       if (!response.ok) {
         return {
           error: data.error || `HTTP ${response.status}`,
@@ -334,10 +335,7 @@ export const driverStatsAPI = {
     apiService.get(`/driver_stats/${date}`),
 };
 
-export const adminAPI = {
-  getDashboard: () => 
-    apiService.get('/admin/dashboard'),
-};
+// Removed duplicate adminAPI - merged below
 
 export const categoriesAPI = {
   getAll: () => 
@@ -535,6 +533,50 @@ export const stripeAPI = {
   
   confirmPaymentIntent: (paymentIntentId: string) =>
     apiService.post('/stripe/confirm_intent', { payment_intent_id: paymentIntentId }),
+};
+
+// Admin API endpoints
+export const adminAPI = {
+  // Dashboard and reports
+  getDashboard: () =>
+    apiService.get('/admin/dashboard'),
+  
+  getSmsReport: () =>
+    apiService.get('/admin/sms_report'),
+  
+  updateWeightBasedProducts: () =>
+    apiService.post('/admin/update_weight_based_products'),
+  
+  // Barcode scanning and product management
+  scanProduct: (gtin: string) =>
+    apiService.post('/admin/scan_product', { gtin }),
+  
+  getProducts: (page: number = 1, perPage: number = 20, search?: string) => {
+    const params = new URLSearchParams();
+    params.append('page', page.toString());
+    params.append('per_page', perPage.toString());
+    if (search) params.append('search', search);
+    
+    return apiService.get(`/admin/products?${params.toString()}`);
+  },
+  
+  getProduct: (id: string) =>
+    apiService.get(`/admin/products/${id}`),
+  
+  deleteProduct: (id: string) =>
+    apiService.delete(`/admin/products/${id}`),
+  
+  createProduct: (formData: FormData) =>
+    apiService.post('/admin/create_product', formData),
+  
+  enhanceProduct: (id: string) =>
+    apiService.post(`/admin/products/${id}/enhance`),
+
+  applyEnhancements: (id: string, enhancementData: any, selectedFields: string[]) =>
+    apiService.post(`/admin/products/${id}/apply_enhancements`, {
+      enhancement_data: enhancementData,
+      selected_fields: selectedFields
+    }),
 };
 
 export default apiService; 

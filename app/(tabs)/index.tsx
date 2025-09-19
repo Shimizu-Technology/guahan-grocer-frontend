@@ -20,6 +20,7 @@ import { useFavorites } from '../../context/FavoritesContext';
 import { productsAPI, categoriesAPI } from '../../services/api';
 import { Item } from '../../types';
 import SimpleImage from '../../components/shared/SimpleImage';
+import EnhancedProductInfo from '../../components/shared/EnhancedProductInfo';
 
 interface Category {
   name: string;
@@ -74,6 +75,8 @@ export default function HomeScreen() {
           trackInventory: product.trackInventory,
           stockStatus: product.stockStatus,
           imageUrl: product.imageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300',
+          // Enhanced Open Food Facts data
+          enhanced: product.enhanced,
         }));
 
         setProducts(formattedProducts);
@@ -107,6 +110,8 @@ export default function HomeScreen() {
           trackInventory: product.trackInventory,
           stockStatus: product.stockStatus,
           imageUrl: product.imageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300',
+          // Enhanced Open Food Facts data
+          enhanced: product.enhanced,
         }));
 
         setFeaturedProducts(formattedFeatured);
@@ -222,8 +227,16 @@ export default function HomeScreen() {
         style={styles.productImage}
         accessibilityLabel={`${item.name} featured product`}
       />
-      <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
-      <Text style={styles.productPrice}>${item.price.toFixed(2)}</Text>
+      <View style={styles.productInfo}>
+        <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
+        
+        {/* Enhanced product info (minimal) for featured products */}
+        {item.enhanced && (
+          <EnhancedProductInfo item={item} minimal={true} />
+        )}
+        
+        <Text style={styles.productPrice}>${item.price.toFixed(2)}</Text>
+      </View>
     </TouchableOpacity>
   );
 
@@ -536,6 +549,10 @@ const styles = StyleSheet.create({
     height: 100,
     borderRadius: 12,
     marginBottom: 8,
+  },
+  productInfo: {
+    flex: 1,
+    gap: 4,
   },
   productName: {
     fontSize: 14,
