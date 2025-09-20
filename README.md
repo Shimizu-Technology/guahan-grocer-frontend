@@ -150,16 +150,111 @@ git push origin main
 
 ### **iOS App (TestFlight/App Store)**
 ```bash
-# 1. Build for iOS
+# 1. Update version in app.json (if not already done)
+# Edit: "version": "1.0.X"
+
+# 2. ⚠️ CRITICAL: Update iOS Info.plist to match app.json version
+# File: ios/GuahanGrocer/Info.plist
+# Find: <key>CFBundleShortVersionString</key>
+# Update: <string>1.0.X</string> (must match app.json version exactly)
+
+# 3. 🚨 MANDATORY: Update version in profile pages
+# File: app/(tabs)/profile.tsx
+# Find: Version 1.0.X (React Native)
+# Update to match app.json version
+# 
+# File: app/admin/(tabs)/profile.tsx  
+# Find: <Text style={styles.infoValue}>1.0.X</Text>
+# Update to match app.json version
+
+# 4. Build for iOS
 eas build --platform ios --profile production-ios
 
-# 2. Submit to TestFlight
+# 5. Submit to TestFlight
 eas submit --platform ios --latest
 
-# 3. Wait 5-10 minutes for Apple processing
-# 4. Update available in TestFlight app
+# 6. Wait 5-10 minutes for Apple processing
+# 7. Update available in TestFlight app
 # Check: https://appstoreconnect.apple.com/apps/6749652653/testflight/ios
 ```
+
+### **⚠️ Common Build Issues & Solutions**
+
+#### Pod Dependency Conflicts
+If you get `Compatible versions of some pods could not be resolved`:
+```bash
+# Clean and reinstall iOS pods
+cd ios
+rm -rf Pods && rm Podfile.lock
+pod install
+cd ..
+
+# Then rebuild with cache cleared
+eas build --platform ios --profile production-ios --clear-cache
+```
+
+#### Version Mismatch Submission Error
+If you get `You've already submitted this version of the app`:
+```bash
+# 1. Check version consistency
+# app.json version: should match Info.plist version
+
+# 2. Update iOS Info.plist to match app.json
+# File: ios/GuahanGrocer/Info.plist
+# Key: CFBundleShortVersionString
+# Value: should match "version" in app.json
+
+# 3. Rebuild and resubmit
+eas build --platform ios --profile production-ios
+eas submit --platform ios --latest
+```
+
+#### Pre-Build Checklist
+Before building, always verify:
+- [ ] `app.json` version is incremented (e.g., "1.0.2" → "1.0.3")
+- [ ] **🚨 MANDATORY**: `ios/GuahanGrocer/Info.plist` CFBundleShortVersionString matches app.json version exactly
+- [ ] **🚨 MANDATORY**: Profile pages display versions match app.json version:
+  - [ ] `app/(tabs)/profile.tsx` - Customer profile version text
+  - [ ] `app/admin/(tabs)/profile.tsx` - Admin profile version text
+- [ ] PostHog API key is set in EAS environment (see PostHog Setup below)
+- [ ] All changes are committed (for tracking)
+- [ ] Backend is deployed if API changes were made
+
+**Quick version check command:**
+```bash
+# Check current versions across all files
+echo "app.json version:" && grep '"version"' app.json
+echo "Info.plist version:" && grep -A1 "CFBundleShortVersionString" ios/GuahanGrocer/Info.plist
+echo "Customer profile version:" && grep "Version.*React Native" app/\(tabs\)/profile.tsx
+echo "Admin profile version:" && grep -A1 "App Version" app/admin/\(tabs\)/profile.tsx | tail -1
+```
+
+#### PostHog Setup (Analytics)
+PostHog analytics requires an API key to be set in the EAS environment:
+
+```bash
+# Set PostHog API key for production builds
+eas env:create --environment production --name EXPO_PUBLIC_POSTHOG_API_KEY --value "your_posthog_api_key_here" --visibility plaintext
+
+# Verify it's set
+eas env:list --environment production
+```
+
+**Note**: The app will work without PostHog (analytics just won't be tracked), but setting the API key enables user behavior tracking.
+
+#### React "Maximum update depth exceeded" Error
+If you get this error on app launch:
+```
+Error: Maximum update depth exceeded. This can happen when a component 
+repeatedly calls setState inside componentWillUpdate or componentDidUpdate.
+```
+
+**Cause**: Usually caused by defining components inside render functions or infinite re-render loops.
+
+**Solution**: Check that:
+- No components are defined inside other component render functions
+- No `setState` calls are made directly in render methods
+- `useEffect` dependencies are properly managed
 
 ### **Android App (Google Play)**
 ```bash

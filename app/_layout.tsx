@@ -48,26 +48,39 @@ export default function RootLayout() {
     return null;
   }
 
+  // Only enable PostHog if API key is available
+  if (config.POSTHOG_API_KEY) {
+    return (
+      <PostHogProvider 
+        apiKey={config.POSTHOG_API_KEY} 
+        options={{
+          host: config.POSTHOG_HOST,
+          captureAppLifecycleEvents: true,
+        }}
+      >
+        <AuthProvider>
+          <NotificationProvider>
+            <CartProvider>
+              <FavoritesProvider>
+                <RootLayoutNav />
+              </FavoritesProvider>
+            </CartProvider>
+          </NotificationProvider>
+        </AuthProvider>
+      </PostHogProvider>
+    );
+  }
+
   return (
-    <PostHogProvider 
-      apiKey={config.POSTHOG_API_KEY} 
-      options={{
-        host: config.POSTHOG_HOST,
-        // Additional PostHog options can be added here
-        // Capture lifecycle events
-        captureAppLifecycleEvents: true,
-      }}
-    >
-      <AuthProvider>
-        <NotificationProvider>
-          <CartProvider>
-            <FavoritesProvider>
-              <RootLayoutNav />
-            </FavoritesProvider>
-          </CartProvider>
-        </NotificationProvider>
-      </AuthProvider>
-    </PostHogProvider>
+    <AuthProvider>
+      <NotificationProvider>
+        <CartProvider>
+          <FavoritesProvider>
+            <RootLayoutNav />
+          </FavoritesProvider>
+        </CartProvider>
+      </NotificationProvider>
+    </AuthProvider>
   );
 }
 

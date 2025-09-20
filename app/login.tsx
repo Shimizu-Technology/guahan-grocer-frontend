@@ -45,7 +45,7 @@ export default function LoginScreen() {
     setIsLoading(true);
     
     // Track login attempt
-    posthog.capture('Login Attempted', {
+    posthog?.capture('Login Attempted', {
       email_domain: email.split('@')[1] || 'unknown'
     });
     
@@ -53,14 +53,14 @@ export default function LoginScreen() {
       await login(email, password);
       
       // Track successful login
-      posthog.capture('Login Successful', {
+      posthog?.capture('Login Successful', {
         email_domain: email.split('@')[1] || 'unknown'
       });
       
       // Navigation will be handled by the useEffect above
     } catch (err) {
       // Track failed login
-      posthog.capture('Login Failed', {
+      posthog?.capture('Login Failed', {
         email_domain: email.split('@')[1] || 'unknown',
         error: 'Invalid credentials'
       });

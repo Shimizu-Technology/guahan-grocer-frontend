@@ -199,7 +199,7 @@ export default function CatalogScreen() {
       addItem(item, weight);
       
       // Track add to cart event
-      posthog.capture('Product Added to Cart', {
+      posthog?.capture('Product Added to Cart', {
         product_id: item.id,
         product_name: item.name,
         category: item.category,
@@ -214,7 +214,7 @@ export default function CatalogScreen() {
       addItem(item, selectedQuantity);
       
       // Track add to cart event
-      posthog.capture('Product Added to Cart', {
+      posthog?.capture('Product Added to Cart', {
         product_id: item.id,
         product_name: item.name,
         category: item.category,
@@ -258,7 +258,7 @@ export default function CatalogScreen() {
     setModalVisible(true);
     
     // Track product view
-    posthog.capture('Product Viewed', {
+    posthog?.capture('Product Viewed', {
       product_id: item.id,
       product_name: item.name,
       category: item.category,
@@ -287,7 +287,7 @@ export default function CatalogScreen() {
     setSelectedCategory(category);
     
     // Track category selection
-    posthog.capture('Category Selected', {
+    posthog?.capture('Category Selected', {
       category: category,
       previous_category: selectedCategory,
       source: 'catalog'
@@ -299,7 +299,7 @@ export default function CatalogScreen() {
     
     // Track search if text is meaningful (3+ characters)
     if (text.length >= 3) {
-      posthog.capture('Product Search', {
+      posthog?.capture('Product Search', {
         search_term: text,
         category: selectedCategory,
         results_count: products.filter(item => 

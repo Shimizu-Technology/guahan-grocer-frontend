@@ -228,7 +228,7 @@ export default function CheckoutScreen() {
 
   // Track checkout page view
   useEffect(() => {
-    posthog.capture('Checkout Started', {
+    posthog?.capture('Checkout Started', {
       cart_value: total,
       item_count: items.length,
       items: items.map(item => ({
@@ -332,7 +332,7 @@ export default function CheckoutScreen() {
     setIsProcessing(true);
     
     // Track order placement attempt
-    posthog.capture('Order Placement Started', {
+    posthog?.capture('Order Placement Started', {
       cart_value: total,
       delivery_fee: shouldShowDeliveryFee ? deliveryFee : 0,
       tip_amount: tipAmount,
@@ -389,7 +389,7 @@ export default function CheckoutScreen() {
             console.log('✅ Payment authorized:', paymentResponse.data);
             
             // Track successful order completion
-            posthog.capture('Order Completed', {
+            posthog?.capture('Order Completed', {
               order_id: createdOrder.id,
               cart_value: total,
               delivery_fee: shouldShowDeliveryFee ? deliveryFee : 0,
