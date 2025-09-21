@@ -417,6 +417,17 @@ export const addressesAPI = {
     apiService.put(`/addresses/${id}/make_default`),
 };
 
+export const addressValidationAPI = {
+  getVillageSuggestions: (query: string) => 
+    apiService.get(`/address_validation/village_suggestions?query=${encodeURIComponent(query)}`, false), // false = no auth required
+  
+  validateAddress: (addressData: any) => 
+    apiService.post('/address_validation/validate', { address: addressData }),
+  
+  normalizeAddress: (address: string) => 
+    apiService.post('/address_validation/normalize', { address })
+};
+
 export const storesAPI = {
   getAll: () => 
     apiService.get('/stores'),

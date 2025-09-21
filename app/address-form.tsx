@@ -51,10 +51,10 @@ export default function AddressFormScreen() {
     label: '',
     streetAddress: '',
     apartmentUnit: '',
-    city: 'Tamuning',
-    state: 'GU',
-    zipCode: '96913',
-    isDefault: false,
+    city: '',
+    state: 'GU', // Keep GU as default since we're Guam-specific
+    zipCode: '',
+    isDefault: false, // Will be updated based on user's existing addresses
   });
   
   const [errors, setErrors] = useState<FormErrors>({});
@@ -63,12 +63,37 @@ export default function AddressFormScreen() {
   const [hasChanges, setHasChanges] = useState(false);
   const [originalData, setOriginalData] = useState<FormData | null>(null);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const [isLikelyFirstAddress, setIsLikelyFirstAddress] = useState(false);
 
   useEffect(() => {
     if (isEditing && id) {
       fetchAddress(id as string);
+    } else {
+      // For new addresses, check if user has existing addresses
+      checkIfFirstAddress();
     }
   }, [isEditing, id]);
+
+  const checkIfFirstAddress = async () => {
+    if (!user) return;
+    
+    try {
+      const response = await addressesAPI.getAll();
+      const addresses = Array.isArray(response.data) ? response.data : [];
+      
+      if (addresses.length === 0) {
+        // This is likely the user's first address
+        setIsLikelyFirstAddress(true);
+        setFormData(prev => ({ ...prev, isDefault: true }));
+      }
+    } catch (error) {
+      console.error('Error checking user addresses:', error);
+      // If we can't check, assume it might be first address for better UX
+      setIsLikelyFirstAddress(true);
+      setFormData(prev => ({ ...prev, isDefault: true }));
+    }
+  };
+
 
   // Track changes to enable/disable save button
   useEffect(() => {
@@ -81,11 +106,12 @@ export default function AddressFormScreen() {
         formData.streetAddress.trim() !== '' ||
         formData.label.trim() !== '' ||
         formData.apartmentUnit.trim() !== '' ||
-        formData.city !== 'Tamuning' ||
-        formData.zipCode !== '96913';
+        formData.city.trim() !== '' ||
+        formData.zipCode.trim() !== '';
       setHasChanges(hasFormChanges);
     }
   }, [formData, originalData, isEditing]);
+
 
   const fetchAddress = async (addressId: string) => {
     try {
@@ -165,6 +191,8 @@ export default function AddressFormScreen() {
     if (!validateForm()) {
       return;
     }
+    
+    // Address validation now happens in real-time, no need to validate on save
 
     setLoading(true);
 
@@ -533,7 +561,7 @@ export default function AddressFormScreen() {
                     <View style={styles.inputContainer}>
                       <TextInput
                         style={[styles.input, errors.city && styles.inputError]}
-                        placeholder="Tamuning"
+                        placeholder="Enter village name (e.g., Agat, Tamuning)"
                         value={formData.city}
                         onChangeText={(text) => {
                           setFormData(prev => ({ ...prev, city: text }));
@@ -544,11 +572,11 @@ export default function AddressFormScreen() {
                         autoCapitalize="words"
                         returnKeyType="next"
                       />
-                      {formData.city.length > 0 && formData.city !== 'Tamuning' && (
+                      {formData.city.length > 0 && (
                         <TouchableOpacity 
                           style={styles.clearButton}
                           onPress={() => {
-                            setFormData(prev => ({ ...prev, city: 'Tamuning' }));
+                            setFormData(prev => ({ ...prev, city: '' }));
                             if (errors.city) {
                               setErrors(prev => ({ ...prev, city: undefined }));
                             }
@@ -558,6 +586,8 @@ export default function AddressFormScreen() {
                         </TouchableOpacity>
                       )}
                     </View>
+                    
+                    
                     {errors.city && (
                       <Text style={styles.errorText}>{errors.city}</Text>
                     )}
@@ -591,7 +621,7 @@ export default function AddressFormScreen() {
                   <View style={styles.inputContainer}>
                     <TextInput
                       style={[styles.input, errors.zipCode && styles.inputError]}
-                      placeholder="96913"
+                      placeholder="Enter zip code (e.g., 96913)"
                       value={formData.zipCode}
                       onChangeText={(text) => {
                         setFormData(prev => ({ ...prev, zipCode: text }));
@@ -631,7 +661,14 @@ export default function AddressFormScreen() {
                         <Ionicons name="checkmark" size={16} color="white" />
                       )}
                     </View>
-                    <Text style={styles.checkboxLabel}>Make this my default address</Text>
+                    <View style={styles.checkboxLabelContainer}>
+                      <Text style={styles.checkboxLabel}>Make this my default address</Text>
+                      {isLikelyFirstAddress && (
+                        <Text style={styles.checkboxHint}>
+                          This will be used for future orders
+                        </Text>
+                      )}
+                    </View>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -795,8 +832,8 @@ const styles = StyleSheet.create({
   },
   checkboxContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    alignItems: 'flex-start',
+    paddingVertical: 4,
   },
   checkbox: {
     width: 20,
@@ -811,9 +848,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#0F766E',
     borderColor: '#0F766E',
   },
+  checkboxLabelContainer: {
+    flex: 1,
+    marginLeft: 12,
+  },
   checkboxLabel: {
     fontSize: 16,
     color: '#374151',
+    fontWeight: '500',
+  },
+  checkboxHint: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: 2,
   },
   infoCard: {
     backgroundColor: 'white',

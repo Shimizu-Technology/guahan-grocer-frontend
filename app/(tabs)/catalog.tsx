@@ -21,6 +21,7 @@ import { usePostHog } from 'posthog-react-native';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { useFavorites } from '../../context/FavoritesContext';
+import { useToast } from '../../context/ToastContext';
 import { productsAPI, categoriesAPI } from '../../services/api';
 import { Item } from '../../types';
 import SimpleImage from '../../components/shared/SimpleImage';
@@ -32,6 +33,7 @@ export default function CatalogScreen() {
   const { user } = useAuth();
   const { addItem } = useCart();
   const { addToFavorites, removeFromFavorites, isFavorite } = useFavorites();
+  const { showAddToCartToast } = useToast();
   const posthog = usePostHog();
   
   const [searchTerm, setSearchTerm] = useState('');
@@ -198,6 +200,9 @@ export default function CatalogScreen() {
       // Add weight-based item with selected weight as quantity
       addItem(item, weight);
       
+      // Show success feedback
+      showAddToCartToast(item.name, weight, item.weightUnit || 'lbs');
+      
       // Track add to cart event
       posthog?.capture('Product Added to Cart', {
         product_id: item.id,
@@ -212,6 +217,9 @@ export default function CatalogScreen() {
     } else {
       // Add unit-based item with selected quantity
       addItem(item, selectedQuantity);
+      
+      // Show success feedback
+      showAddToCartToast(item.name, selectedQuantity);
       
       // Track add to cart event
       posthog?.capture('Product Added to Cart', {

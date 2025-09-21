@@ -12,6 +12,7 @@ import { AuthProvider } from '../context/AuthContext';
 import { CartProvider } from '../context/CartContext';
 import { FavoritesProvider } from '../context/FavoritesContext';
 import { NotificationProvider } from '../context/NotificationContext';
+import { ToastProvider } from '../context/ToastContext';
 import { config } from '../config/environment';
 
 export {
@@ -62,7 +63,9 @@ export default function RootLayout() {
           <NotificationProvider>
             <CartProvider>
               <FavoritesProvider>
-                <RootLayoutNav />
+                <ToastProvider>
+                  <RootLayoutNav />
+                </ToastProvider>
               </FavoritesProvider>
             </CartProvider>
           </NotificationProvider>
@@ -76,7 +79,9 @@ export default function RootLayout() {
       <NotificationProvider>
         <CartProvider>
           <FavoritesProvider>
-            <RootLayoutNav />
+            <ToastProvider>
+              <RootLayoutNav />
+            </ToastProvider>
           </FavoritesProvider>
         </CartProvider>
       </NotificationProvider>

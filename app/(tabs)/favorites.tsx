@@ -18,6 +18,7 @@ import { router } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { useFavorites } from '../../context/FavoritesContext';
+import { useToast } from '../../context/ToastContext';
 import { Item } from '../../types';
 import SimpleImage from '../../components/shared/SimpleImage';
 
@@ -25,6 +26,7 @@ export default function FavoritesScreen() {
   const { user } = useAuth();
   const { addItem } = useCart();
   const { favorites, removeFromFavorites, syncFavorites } = useFavorites();
+  const { showAddToCartToast } = useToast();
   const [refreshing, setRefreshing] = useState(false);
   
   // Modal state for weight/quantity selection
@@ -75,6 +77,9 @@ export default function FavoritesScreen() {
     
     // For unit-based items, add directly with quantity 1
     addItem(item, 1);
+    
+    // Show success feedback
+    showAddToCartToast(item.name, 1);
   };
 
   const handleModalAddToCart = (item: Item) => {
@@ -98,9 +103,15 @@ export default function FavoritesScreen() {
       
       // Add weight-based item with selected weight as quantity
       addItem(item, weight);
+      
+      // Show success feedback
+      showAddToCartToast(item.name, weight, item.weightUnit || 'lbs');
     } else {
       // Add unit-based item with selected quantity
       addItem(item, selectedQuantity);
+      
+      // Show success feedback
+      showAddToCartToast(item.name, selectedQuantity);
     }
     
     closeModal();
