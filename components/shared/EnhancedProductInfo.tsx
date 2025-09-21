@@ -12,9 +12,10 @@ interface EnhancedProductInfoProps {
   item: Item;
   compact?: boolean;
   minimal?: boolean; // New prop for very minimal display
+  hideBrandSize?: boolean; // New prop to hide brand/size when already shown elsewhere
 }
 
-export default function EnhancedProductInfo({ item, compact = false, minimal = false }: EnhancedProductInfoProps) {
+export default function EnhancedProductInfo({ item, compact = false, minimal = false, hideBrandSize = false }: EnhancedProductInfoProps) {
   const [showIngredients, setShowIngredients] = useState(false);
   const [showAllergens, setShowAllergens] = useState(false);
 
@@ -165,7 +166,7 @@ export default function EnhancedProductInfo({ item, compact = false, minimal = f
   if (compact) {
     return (
       <View style={styles.compactContainer}>
-        {renderBrandAndSize()}
+        {!hideBrandSize && renderBrandAndSize()}
         {renderHealthScores()}
       </View>
     );
@@ -173,7 +174,7 @@ export default function EnhancedProductInfo({ item, compact = false, minimal = f
 
   return (
     <View style={styles.container}>
-      {renderBrandAndSize()}
+      {!hideBrandSize && renderBrandAndSize()}
       {renderHealthScores()}
       {renderNutritionInfo()}
       {renderIngredients()}

@@ -552,24 +552,29 @@ export default function CatalogScreen() {
                 )}
                 
                 <View style={styles.modalInfo}>
-                  {/* Product Header */}
+                  {/* Product Header - Cleaner, more focused */}
                   <View style={styles.modalHeader}>
                     <Text style={styles.modalTitle}>{selectedItem.name}</Text>
                     
-                    {/* Enhanced brand and size info */}
-                    {selectedItem.enhanced && (
-                      <View style={styles.modalBrandSize}>
+                    {/* Brand and Size in a cleaner row */}
+                    {selectedItem.enhanced && (selectedItem.enhanced.brand || selectedItem.enhanced.size) && (
+                      <View style={styles.modalBrandSizeRow}>
                         {selectedItem.enhanced.brand && (
                           <Text style={styles.modalBrand}>{selectedItem.enhanced.brand}</Text>
+                        )}
+                        {selectedItem.enhanced.brand && selectedItem.enhanced.size && (
+                          <Text style={styles.modalSeparator}>•</Text>
                         )}
                         {selectedItem.enhanced.size && (
                           <Text style={styles.modalSize}>{selectedItem.enhanced.size}</Text>
                         )}
                       </View>
                     )}
-                    
-                    {/* Price */}
-                    <View style={styles.modalPriceRow}>
+                  </View>
+                  
+                  {/* Price and Stock - Combined for better visual balance */}
+                  <View style={styles.modalPriceStockRow}>
+                    <View style={styles.modalPriceContainer}>
                       <Text style={styles.modalPrice}>
                         ${selectedItem.weightBased 
                           ? (selectedItem.pricePerUnit?.toFixed(2) || selectedItem.price.toFixed(2))
@@ -583,39 +588,44 @@ export default function CatalogScreen() {
                         }
                       </Text>
                     </View>
+                    
+                    <View style={styles.modalStockContainer}>
+                      <View style={[
+                        styles.modalStockBadge,
+                        { backgroundColor: selectedItem.inStock ? '#DCFCE7' : '#FEE2E2' }
+                      ]}>
+                        <Ionicons 
+                          name={selectedItem.inStock ? "checkmark-circle" : "close-circle"} 
+                          size={14} 
+                          color={selectedItem.inStock ? "#16A34A" : "#DC2626"} 
+                        />
+                        <Text style={[
+                          styles.modalStockText,
+                          { color: selectedItem.inStock ? "#16A34A" : "#DC2626" }
+                        ]}>
+                          {selectedItem.inStock ? "In Stock" : "Out of Stock"}
+                        </Text>
+                      </View>
+                    </View>
                   </View>
                   
-                  {/* Category and Stock Status */}
-                  <View style={styles.modalMetaRow}>
-                    <View style={styles.modalCategory}>
-                      <Ionicons name="pricetag-outline" size={16} color="#6B7280" />
-                      <Text style={styles.modalCategoryText}>{selectedItem.category}</Text>
-                    </View>
-                    
-                    <View style={styles.modalStockInfo}>
-                      <Ionicons 
-                        name={selectedItem.inStock ? "checkmark-circle" : "close-circle"} 
-                        size={16} 
-                        color={selectedItem.inStock ? "#10B981" : "#EF4444"} 
-                      />
-                      <Text style={[
-                        styles.modalStockText,
-                        { color: selectedItem.inStock ? "#10B981" : "#EF4444" }
-                      ]}>
-                        {selectedItem.inStock ? "In Stock" : "Out of Stock"}
-                      </Text>
-                    </View>
+                  {/* Category - Simplified */}
+                  <View style={styles.modalCategoryRow}>
+                    <Ionicons name="pricetag-outline" size={16} color="#6B7280" />
+                    <Text style={styles.modalCategoryText}>{selectedItem.category}</Text>
                   </View>
                   
                   {/* Enhanced product information */}
                   {selectedItem.enhanced && (
                     <View style={styles.modalEnhancedSection}>
-                      <EnhancedProductInfo item={selectedItem} compact={false} />
+                      <EnhancedProductInfo item={selectedItem} compact={false} hideBrandSize={true} />
                     </View>
                   )}
                   
+                  {/* Description */}
                   {selectedItem.description && (
                     <View style={styles.modalDescriptionSection}>
+                      <Text style={styles.modalDescriptionTitle}>Description</Text>
                       <Text style={styles.modalDescription}>{selectedItem.description}</Text>
                     </View>
                   )}
@@ -690,39 +700,57 @@ export default function CatalogScreen() {
                     </View>
                   )}
                   
-                  <View style={styles.modalActions}>
-                    <TouchableOpacity
-                      style={styles.modalFavoriteButton}
-                      onPress={() => handleToggleFavorite(selectedItem)}
-                    >
-                      <Ionicons
-                        name={isFavorite(selectedItem.id) ? 'heart' : 'heart-outline'}
-                        size={22}
-                        color={isFavorite(selectedItem.id) ? '#E67E52' : '#6B7280'}
-                      />
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity
-                      style={[
-                        styles.modalAddButton,
-                        !selectedItem.inStock && styles.modalAddButtonDisabled
-                      ]}
-                      onPress={() => {
-                        if (selectedItem.inStock) {
-                          handleAddToCart(selectedItem);
-                          closeModal();
-                        }
-                      }}
-                      disabled={!selectedItem.inStock}
-                    >
-                      <Ionicons name="add" size={20} color="white" />
-                      <Text style={styles.modalAddButtonText}>
-                        {selectedItem.weightBased 
-                          ? `Add ${selectedWeight.toFixed(1)} ${selectedItem.weightUnit || 'lbs'}`
-                          : `Add ${selectedQuantity} to Cart`
-                        }
-                      </Text>
-                    </TouchableOpacity>
+                  {/* Enhanced Action Section */}
+                  <View style={styles.modalActionSection}>
+                    {selectedItem.inStock ? (
+                      <>
+                        {/* Total Price Display */}
+                        <View style={styles.modalTotalRow}>
+                          <Text style={styles.modalTotalLabel}>Total:</Text>
+                          <Text style={styles.modalTotalPrice}>
+                            ${selectedItem.weightBased 
+                              ? ((selectedItem.pricePerUnit || selectedItem.price) * selectedWeight).toFixed(2)
+                              : (selectedItem.price * selectedQuantity).toFixed(2)
+                            }
+                          </Text>
+                        </View>
+                        
+                        {/* Action Buttons Row */}
+                        <View style={styles.modalActionsRow}>
+                          <TouchableOpacity
+                            style={styles.modalFavoriteButton}
+                            onPress={() => handleToggleFavorite(selectedItem)}
+                          >
+                            <Ionicons
+                              name={isFavorite(selectedItem.id) ? 'heart' : 'heart-outline'}
+                              size={20}
+                              color={isFavorite(selectedItem.id) ? '#E67E52' : '#6B7280'}
+                            />
+                          </TouchableOpacity>
+                          
+                          <TouchableOpacity
+                            style={styles.modalAddButton}
+                            onPress={() => {
+                              handleAddToCart(selectedItem);
+                              closeModal();
+                            }}
+                          >
+                            <Ionicons name="add" size={18} color="white" />
+                            <Text style={styles.modalAddButtonText}>
+                              Add {selectedItem.weightBased 
+                                ? `${selectedWeight.toFixed(1)}${selectedItem.weightUnit || 'lbs'}` 
+                                : `${selectedQuantity} ${selectedQuantity === 1 ? 'item' : 'items'}`
+                              } to Cart
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </>
+                    ) : (
+                      <View style={styles.modalOutOfStockSection}>
+                        <Ionicons name="alert-circle-outline" size={20} color="#DC2626" />
+                        <Text style={styles.modalOutOfStockText}>This item is currently out of stock</Text>
+                      </View>
+                    )}
                   </View>
                 </View>
                 </ScrollView>
@@ -1076,30 +1104,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
   },
-  modalFavoriteButton: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 12,
-    padding: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalAddButton: {
-    flex: 1,
-    backgroundColor: '#0F766E',
-    borderRadius: 12,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
   modalAddButtonDisabled: {
     backgroundColor: '#9CA3AF',
-  },
-  modalAddButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
   },
   // Simplified pricing styles
   pricingContainer: {
@@ -1236,5 +1242,120 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#0F766E',
     textAlign: 'center',
+  },
+  
+  // Enhanced Modal Styles
+  modalBrandSizeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  modalSeparator: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    marginHorizontal: 8,
+  },
+  modalPriceStockRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  modalPriceContainer: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
+  },
+  modalStockContainer: {
+    alignItems: 'flex-end',
+  },
+  modalStockBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  modalCategoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 6,
+  },
+  modalDescriptionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 8,
+  },
+  modalActionSection: {
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  modalTotalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 4,
+  },
+  modalTotalLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#374151',
+  },
+  modalTotalPrice: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0F766E',
+  },
+  modalActionsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+  },
+  modalFavoriteButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalAddButton: {
+    flex: 1,
+    backgroundColor: '#0F766E',
+    borderRadius: 12,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  modalAddButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalOutOfStockSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    gap: 8,
+  },
+  modalOutOfStockText: {
+    fontSize: 16,
+    color: '#DC2626',
+    fontWeight: '500',
   },
 }); 
