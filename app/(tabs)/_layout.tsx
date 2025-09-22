@@ -6,6 +6,7 @@ import { TabBarIcon } from '../../components/navigation/TabBarIcon';
 import Colors from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
+import ViewRoleIndicator from '../../components/shared/ViewRoleIndicator';
 
 // Cart Icon with Badge Component
 const CartIconWithBadge = ({ color, focused }: { color: string; focused: boolean }) => {
@@ -65,18 +66,20 @@ const CartIconWithBadge = ({ color, focused }: { color: string; focused: boolean
 };
 
 export default function TabLayout() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, currentViewRole } = useAuth();
 
   useEffect(() => {
     if (!isLoading && user) {
-      // Redirect authenticated non-customer users to their appropriate layouts
-      if (user.role === 'driver') {
+      // Redirect users based on their current view role
+      // Note: This allows admins to view customer tabs when currentViewRole is 'customer'
+      if (currentViewRole === 'driver') {
         router.replace('/driver/(tabs)');
-      } else if (user.role === 'admin') {
+      } else if (currentViewRole === 'admin') {
         router.replace('/admin/(tabs)');
       }
+      // If currentViewRole is 'customer', stay on customer tabs (allows admins to view)
     }
-  }, [user, isLoading]);
+  }, [user, isLoading, currentViewRole]);
 
   if (isLoading) {
     return (
@@ -86,18 +89,23 @@ export default function TabLayout() {
     );
   }
 
-  // Block non-customer authenticated users (they should be redirected above)
-  if (user && user.role !== 'customer') {
+  // Block users who shouldn't be on customer tabs based on their current view role
+  // Allow: guests, actual customers, and admins viewing as customers
+  if (user && currentViewRole !== 'customer') {
     return null; // Will redirect to appropriate layout
   }
 
-  // Allow both guests (user === null) and customers (user.role === 'customer')
+  // Allow: guests (user === null), customers (user.role === 'customer'), 
+  // and admins viewing as customers (currentViewRole === 'customer')
 
-  // Render tabs for guests and customers
+  // Render tabs for guests, customers, and admins viewing as customers
   const isCustomer = user?.role === 'customer';
   const isGuest = !user;
+  const isAdminViewingAsCustomer = user?.role === 'admin' && currentViewRole === 'customer';
 
   return (
+    <>
+      <ViewRoleIndicator />
       <Tabs
         screenOptions={{
           tabBarActiveTintColor: '#1F2937', // Dark gray for active tabs
@@ -170,5 +178,6 @@ export default function TabLayout() {
           }}
         />
       </Tabs>
-    );
+    </>
+  );
 }

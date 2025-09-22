@@ -6,13 +6,16 @@ import { TabBarIcon } from '../../../components/navigation/TabBarIcon';
 import Colors from '../../../constants/Colors';
 import { useColorScheme } from '../../../components/useColorScheme';
 import { useAuth } from '../../../context/AuthContext';
+import ViewRoleIndicator from '../../../components/shared/ViewRoleIndicator';
 
 export default function DriverTabLayout() {
   const colorScheme = useColorScheme();
   const { isOnline } = useAuth();
 
   return (
-    <Tabs
+    <>
+      <ViewRoleIndicator />
+      <Tabs
       screenOptions={{
         tabBarActiveTintColor: '#1F2937', // Dark gray for active tabs
         tabBarInactiveTintColor: '#D1D5DB', // Light gray for inactive tabs
@@ -90,5 +93,6 @@ export default function DriverTabLayout() {
         }}
       />
     </Tabs>
+    </>
   );
 } 

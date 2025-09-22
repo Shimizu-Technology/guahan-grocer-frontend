@@ -5,13 +5,25 @@ import { View, ActivityIndicator } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 
 export default function DriverLayout() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, currentViewRole } = useAuth();
 
   useEffect(() => {
     if (!isLoading && !user) {
       router.replace('/login');
     }
   }, [user, isLoading]);
+
+  // Redirect when admin switches view roles
+  useEffect(() => {
+    if (!isLoading && user && user.role === 'admin') {
+      if (currentViewRole === 'customer') {
+        router.replace('/(tabs)');
+      } else if (currentViewRole === 'admin') {
+        router.replace('/admin/(tabs)');
+      }
+      // If currentViewRole is 'driver', stay on driver layout
+    }
+  }, [user, isLoading, currentViewRole]);
 
   if (isLoading) {
     return (

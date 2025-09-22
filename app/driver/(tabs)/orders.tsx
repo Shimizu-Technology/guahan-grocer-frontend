@@ -32,6 +32,7 @@ interface AvailableOrder {
   createdAt: string;
   status?: string;
   driverId?: string;
+  driverName?: string;
 }
 
 interface ActiveOrder {
@@ -59,9 +60,8 @@ type FilterOption = 'all' | 'high_pay' | 'nearby' | 'urgent';
 
 export default function DriverOrders() {
   const { user, isOnline } = useAuth();
-  const [activeOrder, setActiveOrder] = useState<ActiveOrder | null>(null);
-  const [availableOrders, setAvailableOrders] = useState<AvailableOrder[]>([]);
   const [activeOrders, setActiveOrders] = useState<AvailableOrder[]>([]);
+  const [availableOrders, setAvailableOrders] = useState<AvailableOrder[]>([]);
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -76,29 +76,6 @@ export default function DriverOrders() {
       if (showLoading) setLoading(true);
       setError(null);
 
-      // Fetch active order
-      const activeOrderResponse = await ordersAPI.getActive();
-      if (activeOrderResponse.data) {
-        const responseData = activeOrderResponse.data as any;
-        
-        if (responseData.active_order === null) {
-          setActiveOrder(null);
-        } else {
-          const activeOrderData = responseData;
-          setActiveOrder({
-            id: activeOrderData.id,
-            customerName: activeOrderData.customerFirstName || 'Customer',
-            status: activeOrderData.status,
-            progress: calculateProgress(activeOrderData),
-            totalItems: activeOrderData.items?.length || 0,
-            estimatedPayout: Number(activeOrderData.estimatedPayout) || 0,
-            deliveryAddress: activeOrderData.deliveryAddress,
-            timeElapsed: calculateTimeElapsed(activeOrderData.createdAt),
-          });
-        }
-      } else {
-        setActiveOrder(null);
-      }
 
       // Fetch orders (could be active orders or available orders based on driver state)
       if (isOnline) {
@@ -107,7 +84,7 @@ export default function DriverOrders() {
         if (ordersResponse.data) {
           const formattedOrders = (ordersResponse.data as any[]).map((order: any) => ({
             id: order.id,
-            customerName: order.customerFirstName || 'Customer',
+            customerName: order.customerFirstName || order.customerName || 'Customer',
             itemCount: order.items?.length || 0,
             estimatedPayout: Number(order.estimatedPayout) || 0,
             total: order.total,
@@ -119,6 +96,7 @@ export default function DriverOrders() {
             estimatedTime: order.estimatedTime || 30,
             status: order.status || 'pending', // Include status to distinguish active vs available
             driverId: order.driverId, // Include driver ID
+            driverName: order.driver?.name, // Include driver name for admin view
           }));
           
           // Separate active orders from available orders
@@ -133,8 +111,8 @@ export default function DriverOrders() {
           setAvailableOrders(availableOrdersList);
         }
       } else {
-        setAvailableOrders([]);
         setActiveOrders([]);
+        setAvailableOrders([]);
       }
 
       // TODO: Fetch recent orders (completed today)
@@ -357,67 +335,22 @@ export default function DriverOrders() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         >
-          {/* Active Order Section */}
-          {activeOrder && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>🚨 Active Order</Text>
-              <TouchableOpacity 
-                style={styles.activeOrderCard}
-                onPress={() => router.push(`/driver/order/${activeOrder.id}`)}
-              >
-                <View style={styles.activeOrderHeader}>
-                  <View style={styles.activeOrderInfo}>
-                    <Text style={styles.activeOrderId}>#{activeOrder.id}</Text>
-                    <Text style={styles.activeOrderCustomer}>{activeOrder.customerName}</Text>
-                  </View>
-                  <View style={styles.statusBadge}>
-                    <Ionicons 
-                      name={getStatusIcon(activeOrder.status) as any} 
-                      size={16} 
-                      color="#0F766E" 
-                    />
-                    <Text style={styles.statusText}>{getStatusText(activeOrder.status)}</Text>
-                  </View>
-                </View>
-                
-                <View style={styles.progressSection}>
-                  <View style={styles.progressBar}>
-                    <View 
-                      style={[
-                        styles.progressFill, 
-                        { width: `${(activeOrder.progress / activeOrder.totalItems) * 100}%` }
-                      ]} 
-                    />
-                  </View>
-                  <Text style={styles.progressText}>
-                    {activeOrder.progress}/{activeOrder.totalItems} items • {activeOrder.timeElapsed}m elapsed
-                  </Text>
-                </View>
 
-                <View style={styles.activeOrderFooter}>
-                  <View style={styles.earningsInfo}>
-                    <Text style={styles.earningsLabel}>Estimated Payout</Text>
-                    <Text style={styles.earningsAmount}>${activeOrder.estimatedPayout.toFixed(2)}</Text>
-                  </View>
-                  <TouchableOpacity style={styles.continueButton}>
-                    <Text style={styles.continueButtonText}>Continue</Text>
-                    <Ionicons name="arrow-forward" size={16} color="white" />
-                  </TouchableOpacity>
-                </View>
-              </TouchableOpacity>
-            </View>
-          )}
 
           {/* Active Orders Section - When driver has active orders */}
-          {activeOrders.length > 0 && (
+          {activeOrders && activeOrders.length > 0 && (
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <View style={styles.activeOrderTitleContainer}>
                   <View style={styles.activeOrderTitleRow}>
                     <Ionicons name="flash" size={20} color="#DC2626" />
-                    <Text style={styles.sectionTitle}>Your Active Order</Text>
+                    <Text style={styles.sectionTitle}>
+                      {user?.role === 'admin' ? 'Active Orders' : 'Your Active Order'}
+                    </Text>
                   </View>
-                  <Text style={styles.activeOrderSubtitle}>Complete to accept more</Text>
+                  <Text style={styles.activeOrderSubtitle}>
+                    {user?.role === 'admin' ? 'Monitor and manage all active deliveries' : 'Complete to accept more'}
+                  </Text>
                 </View>
                 <View style={styles.activeOrderBadge}>
                   <Text style={styles.activeOrderBadgeText}>IN PROGRESS</Text>
@@ -430,18 +363,24 @@ export default function DriverOrders() {
                     <View style={styles.orderInfo}>
                       <Text style={styles.orderId}>#{order.id}</Text>
                       <Text style={styles.customerName}>{order.customerName}</Text>
+                      {/* Show driver info for admins viewing active orders */}
+                      {user?.role === 'admin' && order.driverName && (
+                        <View style={styles.driverInfo}>
+                          <Ionicons name="person" size={14} color="#6B7280" />
+                          <Text style={styles.driverName}>Driver: {order.driverName}</Text>
+                        </View>
+                      )}
                     </View>
-                    <View style={styles.urgencyBadge}>
-                      <View 
-                        style={[
-                          styles.urgencyDot, 
-                          { backgroundColor: getStatusColor(order.status || 'pending') }
-                        ]} 
+                    <View style={styles.statusBadge}>
+                      <Ionicons 
+                        name={getStatusIcon(order.status || 'pending') as any} 
+                        size={16} 
+                        color="#0F766E" 
                       />
-                      <Text style={styles.urgencyText}>{getStatusText(order.status || 'pending')}</Text>
+                      <Text style={styles.statusText}>{getStatusText(order.status || 'pending')}</Text>
                     </View>
                   </View>
-
+                  
                   <View style={styles.orderDetails}>
                     <View style={styles.detailRow}>
                       <Ionicons name="list" size={16} color="#6B7280" />
@@ -454,19 +393,21 @@ export default function DriverOrders() {
                     <View style={styles.detailRow}>
                       <Ionicons name="location" size={16} color="#6B7280" />
                       <Text style={styles.detailText}>
-                        {order.deliveryDistance}mi from store to customer
+                        {order.deliveryDistance?.toFixed(1)}mi from store to customer
                       </Text>
                     </View>
                     <View style={styles.detailRow}>
                       <Ionicons name="time" size={16} color="#6B7280" />
-                      <Text style={styles.detailText}>~{order.estimatedTime} min total (shop + deliver)</Text>
+                      <Text style={styles.detailText}>
+                        ~{order.estimatedTime} min total (shop + deliver)
+                      </Text>
                     </View>
                   </View>
-
+                  
                   <View style={styles.orderFooter}>
-                    <View style={styles.payoutInfo}>
-                      <Text style={styles.payoutLabel}>Estimated Payout</Text>
-                      <Text style={styles.payoutAmount}>${order.estimatedPayout.toFixed(2)}</Text>
+                    <View style={styles.earningsInfo}>
+                      <Text style={styles.earningsLabel}>Estimated Payout</Text>
+                      <Text style={styles.earningsAmount}>${order.estimatedPayout.toFixed(2)}</Text>
                     </View>
                     <TouchableOpacity 
                       style={[styles.continueButton, styles.continueButtonActive]}
@@ -481,8 +422,8 @@ export default function DriverOrders() {
             </View>
           )}
 
-          {/* Available Orders Section - When driver has no active orders */}
-          {activeOrders.length === 0 && (
+          {/* Available Orders Section - When driver has no active orders OR when admin viewing as driver */}
+          {((!activeOrders || activeOrders.length === 0) || user?.role === 'admin') && (
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>
@@ -908,6 +849,17 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#1F2937',
+  },
+  driverInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 4,
+  },
+  driverName: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
   },
   urgencyBadge: {
     flexDirection: 'row',

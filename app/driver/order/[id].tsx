@@ -110,13 +110,13 @@ export default function DriverOrderDetails() {
         setSkipNextFetch(false); // Reset the flag
         return;
       }
-      fetchOrderData();
+      fetchOrderData(false); // Don't show loading spinner for background updates
     }, [skipNextFetch])
   );
 
-  const fetchOrderData = async () => {
+  const fetchOrderData = async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       setError(null);
 
       const response = await ordersAPI.getById(id as string);
@@ -181,7 +181,7 @@ export default function DriverOrderDetails() {
       console.error('Failed to fetch order:', err);
       setError('Failed to load order details. Please try again.');
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -286,7 +286,7 @@ export default function DriverOrderDetails() {
         <View style={styles.errorContainer}>
           <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
           <Text style={styles.errorText}>{error || 'Order not found'}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={fetchOrderData}>
+          <TouchableOpacity style={styles.retryButton} onPress={() => fetchOrderData()}>
             <Text style={styles.retryButtonText}>Try Again</Text>
           </TouchableOpacity>
         </View>

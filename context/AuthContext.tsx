@@ -14,6 +14,9 @@ interface AuthContextType {
   // Online status functions
   isOnline: boolean;
   toggleOnline: () => Promise<void>;
+  // Role switching for admins
+  currentViewRole: 'customer' | 'driver' | 'admin';
+  switchViewRole: (role: 'customer' | 'driver' | 'admin') => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -31,10 +34,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isOnline, setIsOnline] = useState(false);
+  const [currentViewRole, setCurrentViewRole] = useState<'customer' | 'driver' | 'admin'>('customer');
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   useEffect(() => {
     loadStoredAuth();
   }, []);
+
+  // Sync currentViewRole with user's actual role only on initial load
+  useEffect(() => {
+    if (user) {
+      // Only reset currentViewRole on initial load or if currentViewRole is still default
+      if (isInitialLoad || currentViewRole === 'customer') {
+        setCurrentViewRole(user.role);
+        setIsInitialLoad(false);
+      }
+      // Otherwise preserve the current view role (admin is viewing as different role)
+    } else {
+      setCurrentViewRole('customer'); // Default for guests
+      setIsInitialLoad(true); // Reset for next login
+    }
+  }, [user]);
 
   const loadStoredAuth = async () => {
     try {
@@ -149,6 +169,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const response = await authAPI.toggleOnline();
       if (response.data && (response.data as any).user) {
         const userData = (response.data as any).user;
+        // Update user state - the useEffect will preserve currentViewRole since it's not initial load
         setUser(userData);
         setIsOnline(userData.isOnline || false);
       }
@@ -156,6 +177,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Toggle online error:', error);
       throw error;
     }
+  };
+
+  // Role switching function (only for admins)
+  const switchViewRole = (role: 'customer' | 'driver' | 'admin') => {
+    // Security check: only admins can switch roles
+    if (user?.role !== 'admin') {
+      console.warn('Only admin users can switch view roles');
+      return;
+    }
+    
+    console.log(`Admin switching view role from ${currentViewRole} to ${role}`);
+    setCurrentViewRole(role);
   };
 
   const value = {
@@ -167,7 +200,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     updateUser, 
     isLoading,
     isOnline,
-    toggleOnline
+    toggleOnline,
+    currentViewRole,
+    switchViewRole
   };
 
   return (
