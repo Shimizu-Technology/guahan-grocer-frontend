@@ -37,6 +37,13 @@ interface Product {
   trackInventory: boolean;
   stockStatus: string;
   available: boolean;
+  // Enhanced data fields
+  brand?: string;
+  nutriscoreGrade?: string;
+  novaGroup?: number;
+  allergens?: string;
+  hasHealthScores?: boolean;
+  hasAllergenInfo?: boolean;
 }
 
 interface Category {
@@ -117,6 +124,7 @@ export default function AdminInventory() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -250,8 +258,8 @@ export default function AdminInventory() {
   // Fetch products from API
   const fetchProducts = async () => {
     try {
-      console.log('API Request: GET', 'products');
-      const response = await productsAPI.getAll();
+      console.log('API Request: GET', 'admin/products');
+      const response = await adminAPI.getProducts();
       
       if (response.data) {
         const formattedProducts = (response.data as any[]).map((product: any) => ({
@@ -259,13 +267,20 @@ export default function AdminInventory() {
           name: product.name || 'Unnamed Product',
           category: product.category || 'Uncategorized',
           price: product.price || '0.00',
-          stock: product.stockQuantity || 0,
-          lowStock: product.trackInventory ? (product.stockQuantity || 0) < 10 : false,
+          stock: product.stock_quantity || 0,
+          lowStock: product.track_inventory ? (product.stock_quantity || 0) < 10 : false,
           unit: product.unit || 'item',
-          status: product.available ? 'active' : 'out_of_stock',
-          trackInventory: product.trackInventory || false,
-          stockStatus: product.stockStatus || 'In Stock',
-          available: product.available || false,
+          status: product.in_stock ? 'active' : 'out_of_stock',
+          trackInventory: product.track_inventory || false,
+          stockStatus: product.in_stock ? 'In Stock' : 'Out of Stock',
+          available: product.in_stock || false,
+          // Enhanced data fields
+          brand: product.brand,
+          nutriscoreGrade: product.nutriscore_grade,
+          novaGroup: product.nova_group,
+          allergens: product.allergens,
+          hasHealthScores: product.has_health_scores,
+          hasAllergenInfo: product.has_allergen_info,
         }));
 
         setProducts(formattedProducts);
@@ -932,9 +947,19 @@ export default function AdminInventory() {
     }
   };
 
-  const filteredProducts = selectedCategory === 'all' 
-    ? products 
-    : products.filter(product => product.category?.toLowerCase() === selectedCategory.toLowerCase());
+  // Filter products by category and search term
+  const filteredProducts = products.filter(product => {
+    // Category filter
+    const matchesCategory = selectedCategory === 'all' || 
+      product.category?.toLowerCase() === selectedCategory.toLowerCase();
+    
+    // Search filter
+    const matchesSearch = searchTerm === '' || 
+      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.category?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    return matchesCategory && matchesSearch;
+  });
 
   if (loading) {
     return (
@@ -977,8 +1002,32 @@ export default function AdminInventory() {
           </View>
         </View>
 
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={20} color="#6B7280" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search products..."
+            value={searchTerm}
+            onChangeText={setSearchTerm}
+            placeholderTextColor="#9CA3AF"
+          />
+          {searchTerm.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchTerm('')}>
+              <Ionicons name="close-circle" size={20} color="#6B7280" />
+            </TouchableOpacity>
+          )}
+        </View>
+
         {/* Category Filters */}
         <View style={styles.filtersContainer}>
+          {searchTerm && (
+            <View style={styles.searchResultsHeader}>
+              <Text style={styles.searchResultsText}>
+                {filteredProducts.length} result{filteredProducts.length !== 1 ? 's' : ''} for "{searchTerm}"
+              </Text>
+            </View>
+          )}
           <ScrollView 
             horizontal 
             showsHorizontalScrollIndicator={false}
@@ -1027,9 +1076,11 @@ export default function AdminInventory() {
               <Ionicons name="cube-outline" size={64} color="#9CA3AF" />
               <Text style={styles.emptyStateTitle}>No products found</Text>
               <Text style={styles.emptyStateDescription}>
-                {selectedCategory === 'all' 
-                  ? 'Start by adding your first product' 
-                  : `No products in ${categories.find(c => c.key === selectedCategory)?.label || selectedCategory} category`
+                {searchTerm 
+                  ? `No products found for "${searchTerm}"`
+                  : selectedCategory === 'all' 
+                    ? 'Start by adding your first product' 
+                    : `No products in ${categories.find(c => c.key === selectedCategory)?.label || selectedCategory} category`
                 }
               </Text>
             </View>
@@ -1046,16 +1097,25 @@ export default function AdminInventory() {
                           
                           {/* Enhanced indicators */}
                           <View style={styles.productIndicators}>
-                            {/* Health scores - mock data for now, will be real when backend provides it */}
-                            {product.name.toLowerCase().includes('nutella') && (
-                              <>
-                                <View style={[styles.miniNutriScore, { backgroundColor: getNutriScoreColor('e') }]}>
-                                  <Text style={styles.miniScoreText}>E</Text>
-                                </View>
-                                <View style={styles.allergenIndicator}>
-                                  <Ionicons name="warning" size={12} color="#DC2626" />
-                                </View>
-                              </>
+                            {/* Nutri-Score badge */}
+                            {product.nutriscoreGrade && (
+                              <View style={[styles.miniNutriScore, { backgroundColor: getNutriScoreColor(product.nutriscoreGrade) }]}>
+                                <Text style={styles.miniScoreText}>{product.nutriscoreGrade.toUpperCase()}</Text>
+                              </View>
+                            )}
+                            
+                            {/* Allergen warning */}
+                            {product.hasAllergenInfo && (
+                              <View style={styles.allergenIndicator}>
+                                <Ionicons name="warning" size={12} color="#DC2626" />
+                              </View>
+                            )}
+                            
+                            {/* NOVA group indicator */}
+                            {product.novaGroup && (
+                              <View style={styles.novaIndicator}>
+                                <Ionicons name="nutrition" size={12} color="#F59E0B" />
+                              </View>
                             )}
                             {/* Food product indicator */}
                             {(product.name.toLowerCase().includes('nutella') || 
@@ -2009,6 +2069,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    marginHorizontal: 20,
+    marginVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    gap: 12,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#1F2937',
+  },
+  searchResultsHeader: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+  },
+  searchResultsText: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
   scanButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2634,6 +2721,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#FECACA',
+  },
+  novaIndicator: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#FEF3C7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
   },
   foodIndicator: {
     width: 20,
