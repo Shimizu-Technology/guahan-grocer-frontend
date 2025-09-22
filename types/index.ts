@@ -94,6 +94,10 @@ export interface Order {
   status: 'new' | 'shopping' | 'delivering' | 'delivered' | 'cancelled';
   items: OrderItem[];
   total: number;
+  subtotal?: number;
+  deliveryFee?: number;
+  serviceFee?: number;
+  tipAmount?: number;
   createdAt: Date;
   deliveryAddress: {
     streetAddress: string;

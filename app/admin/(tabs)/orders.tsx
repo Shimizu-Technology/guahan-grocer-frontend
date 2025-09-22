@@ -594,6 +594,7 @@ export default function AdminOrders() {
                     <View style={styles.infoCell}><Text style={styles.infoLabel}>ETA</Text><Text style={styles.infoValue}>{orderDetails.eta || '—'}</Text></View>
                     <View style={styles.infoCell}><Text style={styles.infoLabel}>Delivery Time</Text><Text style={styles.infoValue}>{orderDetails.deliveryTime || 'ASAP'}</Text></View>
                     <View style={styles.infoCell}><Text style={styles.infoLabel}>Delivery Fee</Text><Text style={styles.infoValue}>${Number(orderDetails.deliveryFee || 0).toFixed(2)}</Text></View>
+                    <View style={styles.infoCell}><Text style={styles.infoLabel}>Service Fee (5%)</Text><Text style={styles.infoValue}>${Number(orderDetails.serviceFee || 0).toFixed(2)}</Text></View>
                     <View style={styles.infoCell}><Text style={styles.infoLabel}>Tip</Text><Text style={styles.infoValue}>${Number(orderDetails.tipAmount || 0).toFixed(2)}</Text></View>
                   </View>
                 </View>

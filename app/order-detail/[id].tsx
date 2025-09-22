@@ -109,6 +109,7 @@ interface Order {
   total: number;
   subtotal: number;
   deliveryFee: number;
+  serviceFee: number;
   actualDeliveryFee?: number;
   tipAmount: number;
   tipPercentage: number;
@@ -182,6 +183,7 @@ export default function OrderDetailScreen() {
           total: parseFloat(orderData.total || 0),
           subtotal: parseFloat(orderData.subtotal || 0),
           deliveryFee: parseFloat(orderData.deliveryFee || 0),
+          serviceFee: parseFloat(orderData.serviceFee || 0),
           actualDeliveryFee: orderData.actualDeliveryFee ? parseFloat(orderData.actualDeliveryFee) : undefined,
           tipAmount: parseFloat(orderData.tipAmount || 0),
           tipPercentage: parseFloat(orderData.tipPercentage || 0),
@@ -1178,6 +1180,13 @@ export default function OrderDetailScreen() {
                   ${(order.actualDeliveryFee || order.deliveryFee).toFixed(2)}
                 </Text>
               </View>
+
+              {order.serviceFee > 0 && (
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Service Fee (5%)</Text>
+                  <Text style={styles.summaryValue}>${order.serviceFee.toFixed(2)}</Text>
+                </View>
+              )}
 
               {order.tipAmount > 0 && (
                 <View style={styles.summaryRow}>

@@ -315,7 +315,11 @@ export default function CheckoutScreen() {
   
   // Only include delivery fee in total when it's being displayed
   const shouldShowDeliveryFee = streetAddress || deliveryFeeLoading || distanceDetails;
-  const finalTotal = total + (shouldShowDeliveryFee ? deliveryFee : 0) + tipAmount;
+  
+  // Calculate service fee (5% of subtotal + delivery fee)
+  const serviceFee = shouldShowDeliveryFee ? ((total + deliveryFee) * 0.05) : 0;
+  
+  const finalTotal = total + (shouldShowDeliveryFee ? deliveryFee : 0) + serviceFee + tipAmount;
 
   const isFormValid = streetAddress && city && zipCode && cardholderName && 
                       cardNumber.replace(/\s/g, '').length >= 3 && 
@@ -335,6 +339,7 @@ export default function CheckoutScreen() {
     posthog?.capture('Order Placement Started', {
       cart_value: total,
       delivery_fee: shouldShowDeliveryFee ? deliveryFee : 0,
+      service_fee: serviceFee,
       tip_amount: tipAmount,
       final_total: finalTotal,
       item_count: items.length,
@@ -348,7 +353,8 @@ export default function CheckoutScreen() {
         order: {
           subtotal: total, // Items cost only
           delivery_fee: shouldShowDeliveryFee ? deliveryFee : 0,
-          total: finalTotal, // Grand total (subtotal + delivery + tip)
+          service_fee: serviceFee,
+          total: finalTotal, // Grand total (subtotal + delivery + service fee + tip)
           tip_amount: tipAmount,
           tip_percentage: tipOption === 'percentage' ? tipPercentage : 0,
           delivery_address: {
@@ -393,6 +399,7 @@ export default function CheckoutScreen() {
               order_id: createdOrder.id,
               cart_value: total,
               delivery_fee: shouldShowDeliveryFee ? deliveryFee : 0,
+              service_fee: serviceFee,
               tip_amount: tipAmount,
               final_total: finalTotal,
               item_count: items.length,
@@ -981,6 +988,16 @@ export default function CheckoutScreen() {
                 </View>
               </View>
             )}
+            {/* Service Fee - only show when delivery fee is shown */}
+            {shouldShowDeliveryFee && serviceFee > 0 && (
+              <View style={styles.totalRow}>
+                <View style={styles.serviceFeeContainer}>
+                  <Text style={styles.totalLabel}>Service Fee</Text>
+                  <Text style={styles.serviceFeeSubtext}>5% of subtotal + delivery</Text>
+                </View>
+                <Text style={styles.totalAmount}>${serviceFee.toFixed(2)}</Text>
+              </View>
+            )}
             {/* Address Correction Notice */}
             {addressCorrection && (
               <View style={styles.addressCorrectionContainer}>
@@ -1417,6 +1434,15 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'center',
     minHeight: 24,
+  },
+  // Service Fee Display Styles
+  serviceFeeContainer: {
+    flex: 1,
+  },
+  serviceFeeSubtext: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
   },
   // Validation Warning Styles
   validationWarningContainer: {

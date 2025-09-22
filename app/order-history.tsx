@@ -37,6 +37,7 @@ interface Order {
   total: number;
   subtotal: number;
   deliveryFee: number;
+  serviceFee: number;
   tipAmount: number;
   finalTotal?: number;
   createdAt: string;
@@ -69,6 +70,7 @@ export default function OrderHistoryScreen() {
           total: parseFloat(order.total || 0),
           subtotal: parseFloat(order.subtotal || 0),
           deliveryFee: parseFloat(order.deliveryFee || 0),
+          serviceFee: parseFloat(order.serviceFee || 0),
           tipAmount: parseFloat(order.tipAmount || 0),
           finalTotal: order.finalTotal ? parseFloat(order.finalTotal) : undefined,
           createdAt: order.createdAt,
