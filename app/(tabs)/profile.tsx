@@ -258,7 +258,7 @@ export default function ProfileScreen() {
           <Text style={styles.sectionTitle}>About</Text>
           <View style={styles.infoCard}>
             <Text style={styles.appName}>Guahan Grocer</Text>
-            <Text style={styles.appVersion}>Version 1.0.8 (React Native)</Text>
+            <Text style={styles.appVersion}>Version 1.0.9 (React Native)</Text>
             <Text style={styles.appDescription}>
               Fresh groceries delivered to your door. Built with React Native and Expo.
             </Text>

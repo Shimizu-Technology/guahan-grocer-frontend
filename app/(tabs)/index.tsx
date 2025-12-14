@@ -21,6 +21,8 @@ import { productsAPI, categoriesAPI } from '../../services/api';
 import { Item } from '../../types';
 import SimpleImage from '../../components/shared/SimpleImage';
 import EnhancedProductInfo from '../../components/shared/EnhancedProductInfo';
+import MaintenanceBanner from '../../components/shared/MaintenanceBanner';
+import { config } from '../../config/environment';
 
 interface Category {
   name: string;
@@ -273,6 +275,9 @@ export default function HomeScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
+        {/* Maintenance Banner */}
+        {config.MAINTENANCE_MODE && <MaintenanceBanner variant="full" />}
+
         {/* Header */}
         <View style={styles.header}>
           <View>

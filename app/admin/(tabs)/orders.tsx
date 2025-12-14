@@ -138,9 +138,13 @@ export default function AdminOrders() {
       setAssigning(true);
       const resp = await ordersAPI.assignDriver(selectedOrderId, driverId);
       if (resp.data) {
-        // Always refetch the assigned order to get canonical state (driver + assigned flag)
-        const refreshed = await ordersAPI.getById(selectedOrderId);
+        // Always refetch the assigned order and timeline to get canonical state
+        const [refreshed, timelineResp] = await Promise.all([
+          ordersAPI.getById(selectedOrderId),
+          ordersAPI.getTimeline(selectedOrderId)
+        ]);
         setOrderDetails(refreshed.data || null);
+        setTimeline((timelineResp.data as any)?.timeline || []);
         await fetchOrders(false);
       }
     } catch (e) {
@@ -148,6 +152,55 @@ export default function AdminOrders() {
     } finally {
       setAssigning(false);
     }
+  };
+
+  const unassignDriver = async () => {
+    if (!selectedOrderId) return;
+    try {
+      setAssigning(true);
+      const resp = await ordersAPI.unassignDriver(selectedOrderId);
+      if (resp.data) {
+        // Refetch the order and timeline to get updated state
+        const [refreshed, timelineResp] = await Promise.all([
+          ordersAPI.getById(selectedOrderId),
+          ordersAPI.getTimeline(selectedOrderId)
+        ]);
+        setOrderDetails(refreshed.data || null);
+        setTimeline((timelineResp.data as any)?.timeline || []);
+        await fetchOrders(false);
+      }
+    } catch (e) {
+      console.error('Failed to unassign driver:', e);
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const reassignDriver = async (driverId: string) => {
+    if (!selectedOrderId) return;
+    try {
+      setAssigning(true);
+      const resp = await ordersAPI.reassignDriver(selectedOrderId, driverId);
+      if (resp.data) {
+        // Refetch the order and timeline to get updated state
+        const [refreshed, timelineResp] = await Promise.all([
+          ordersAPI.getById(selectedOrderId),
+          ordersAPI.getTimeline(selectedOrderId)
+        ]);
+        setOrderDetails(refreshed.data || null);
+        setTimeline((timelineResp.data as any)?.timeline || []);
+        await fetchOrders(false);
+      }
+    } catch (e) {
+      console.error('Failed to reassign driver:', e);
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  // Helper function to check if driver can be unassigned/reassigned
+  const canUnassignDriver = (status: string) => {
+    return ['pending', 'accepted', 'shopping'].includes(status);
   };
 
   // Batch assignment functions
@@ -600,19 +653,63 @@ export default function AdminOrders() {
                 </View>
 
                 <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Driver</Text>
+                  <Text style={styles.sectionTitle}>Driver Management</Text>
                   <View style={styles.driverRow}>
                     <Text style={styles.driverName}>{orderDetails.driver?.name || 'Unassigned'}</Text>
+                    {orderDetails.driver && (
+                      <View style={styles.driverActions}>
+                        <TouchableOpacity 
+                          style={[
+                            styles.smallButton, 
+                            styles.secondaryAction,
+                            !canUnassignDriver(orderDetails.status) && styles.disabledButton
+                          ]} 
+                          disabled={assigning || !canUnassignDriver(orderDetails.status)} 
+                          onPress={() => unassignDriver()}
+                        >
+                          {assigning ? <ActivityIndicator size="small" color="#0F766E" /> : <Text style={styles.actionText}>Unassign</Text>}
+                        </TouchableOpacity>
+                      </View>
+                    )}
                   </View>
 
-                  {orderDetails.status === 'pending' && drivers.length > 0 && (
+                  {orderDetails.driver && !canUnassignDriver(orderDetails.status) && (
+                    <View style={styles.statusWarning}>
+                      <Text style={styles.statusWarningText}>
+                        Cannot unassign driver when order is "{orderDetails.status}". 
+                        Only orders that are "pending", "accepted", or "shopping" can be unassigned.
+                      </Text>
+                    </View>
+                  )}
+
+                  {drivers.length > 0 && (
                     <View style={styles.driverList}>
-                      <Text style={styles.subSectionTitle}>Available Drivers</Text>
+                      <Text style={styles.subSectionTitle}>
+                        {orderDetails.driver ? 'Reassign to Different Driver' : 'Available Drivers'}
+                      </Text>
                       {drivers.map((item: any) => (
                         <View key={item.id} style={styles.driverItem}>
                           <Text style={styles.driverItemName}>{item.name}</Text>
-                          <TouchableOpacity style={[styles.smallButton, styles.primaryAction]} disabled={assigning} onPress={() => assignDriver(item.id)}>
-                            {assigning ? <ActivityIndicator size="small" color="#fff" /> : <Text style={[styles.actionText, styles.primaryActionText]}>Assign</Text>}
+                          <TouchableOpacity 
+                            style={[
+                              styles.smallButton, 
+                              styles.primaryAction,
+                              (orderDetails.driver && !canUnassignDriver(orderDetails.status)) && styles.disabledButton
+                            ]} 
+                            disabled={
+                              assigning || 
+                              (orderDetails.driver?.id === item.id) ||
+                              (orderDetails.driver && !canUnassignDriver(orderDetails.status))
+                            } 
+                            onPress={() => orderDetails.driver ? reassignDriver(item.id) : assignDriver(item.id)}
+                          >
+                            {assigning ? (
+                              <ActivityIndicator size="small" color="#fff" />
+                            ) : (
+                              <Text style={[styles.actionText, styles.primaryActionText]}>
+                                {orderDetails.driver?.id === item.id ? 'Current' : orderDetails.driver ? 'Reassign' : 'Assign'}
+                              </Text>
+                            )}
                           </TouchableOpacity>
                         </View>
                       ))}
@@ -1140,6 +1237,29 @@ const styles = StyleSheet.create({
   primaryActionText: {
     color: 'white',
   },
+  secondaryAction: {
+    backgroundColor: 'white',
+    borderColor: '#0F766E',
+    borderWidth: 1,
+  },
+  disabledButton: {
+    backgroundColor: '#F3F4F6',
+    borderColor: '#D1D5DB',
+    opacity: 0.6,
+  },
+  statusWarning: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+  },
+  statusWarningText: {
+    fontSize: 12,
+    color: '#92400E',
+    lineHeight: 16,
+  },
 
   // Modal styles
   modalContainer: { flex: 1, backgroundColor: 'white' },
@@ -1167,6 +1287,7 @@ const styles = StyleSheet.create({
   infoValue: { color: '#1F2937', fontWeight: '600' },
   driverRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   driverName: { fontSize: 16, color: '#1F2937', fontWeight: '600' },
+  driverActions: { flexDirection: 'row', gap: 8 },
   driverList: { marginTop: 8, backgroundColor: '#F9FAFB', borderRadius: 12, padding: 8 },
   subSectionTitle: { fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 4, paddingHorizontal: 4 },
   driverItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },

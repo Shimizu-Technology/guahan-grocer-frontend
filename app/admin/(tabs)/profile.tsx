@@ -106,7 +106,7 @@ export default function AdminProfile() {
             <Text style={styles.sectionTitle}>System Information</Text>
             <View style={styles.infoItem}>
               <Text style={styles.infoLabel}>App Version</Text>
-              <Text style={styles.infoValue}>1.0.8</Text>
+              <Text style={styles.infoValue}>1.0.9</Text>
             </View>
             <View style={styles.infoItem}>
               <Text style={styles.infoLabel}>Database Status</Text>

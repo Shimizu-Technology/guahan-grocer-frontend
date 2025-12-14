@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User } from '../types';
 import { authAPI } from '../services/api';
+import { config } from '../config/environment';
 
 interface AuthContextType {
   user: User | null;
@@ -59,6 +60,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadStoredAuth = async () => {
     try {
       setIsLoading(true); // Ensure loading is true at start
+      
+      // In maintenance mode, skip token validation
+      if (config.MAINTENANCE_MODE) {
+        console.log('Maintenance mode: Skipping token validation');
+        setIsLoading(false);
+        return;
+      }
+      
       const storedToken = await AsyncStorage.getItem('token');
       
       if (storedToken) {
@@ -101,6 +110,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, password: string) => {
     try {
+      // In maintenance mode, show friendly error
+      if (config.MAINTENANCE_MODE) {
+        throw new Error('Login is temporarily unavailable. Please browse as a guest to explore our catalog in demo mode.');
+      }
+      
       const response = await authAPI.login(email, password);
       
       if (response.data) {
@@ -125,6 +139,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const register = async (email: string, password: string, name: string, phone: string) => {
     try {
+      // In maintenance mode, show friendly error
+      if (config.MAINTENANCE_MODE) {
+        throw new Error('Registration is temporarily unavailable. Please check back in mid-late 2026!');
+      }
+      
       const response = await authAPI.register(email, password, name, phone);
       
       if (response.data) {

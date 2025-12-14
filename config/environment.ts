@@ -45,6 +45,16 @@ export const config = {
   IS_DEVELOPMENT: isDevelopment,
   IS_PRODUCTION: !isDevelopment,
   
+  // Maintenance Mode - Set to true when backend is suspended
+  MAINTENANCE_MODE: true,
+  MAINTENANCE_MESSAGE: {
+    title: '🏝️ Taking a Short Break',
+    message: "We're temporarily pausing development to focus on other projects. You can still browse our catalog in demo mode!",
+    expectedReturn: 'Mid-Late 2026',
+    contactEmail: 'shimizutechnology@gmail.com',
+    websiteUrl: 'https://shimizu-technology.com',
+  },
+  
   // Third-party service keys
   STRIPE_PUBLISHABLE_KEY: process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '',
   POSTHOG_API_KEY: process.env.EXPO_PUBLIC_POSTHOG_API_KEY || '',

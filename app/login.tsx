@@ -15,6 +15,8 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { router } from 'expo-router';
 import { usePostHog } from 'posthog-react-native';
+import MaintenanceBanner from '../components/shared/MaintenanceBanner';
+import { config } from '../config/environment';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -82,6 +84,13 @@ export default function LoginScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          {/* Maintenance Banner - Compact version for login */}
+          {config.MAINTENANCE_MODE && (
+            <View style={{ marginBottom: 20 }}>
+              <MaintenanceBanner variant="compact" />
+            </View>
+          )}
+
           {/* Logo */}
           <View style={styles.logoContainer}>
             <Text style={styles.logoText}>

@@ -1,6 +1,14 @@
 // API service for connecting to Guahan Grocer backend
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApiUrl, config } from '../config/environment';
+import { 
+  mockProducts, 
+  mockCategories, 
+  mockFeaturedProducts, 
+  createMockApiResponse,
+  getProductsByCategory,
+  searchProducts 
+} from './mockData';
 
 interface ApiResponse<T> {
   data?: T;
@@ -226,21 +234,42 @@ export const authAPI = {
 };
 
 export const productsAPI = {
-  getAll: (category?: string) => {
+  getAll: async (category?: string) => {
+    // Use mock data in maintenance mode
+    if (config.MAINTENANCE_MODE) {
+      const data = category ? getProductsByCategory(category) : mockProducts;
+      return createMockApiResponse(data);
+    }
     const params = category ? `?category=${encodeURIComponent(category)}` : '';
     return apiService.get(`/products${params}`, false);
   },
   
-  getAllAvailable: (category?: string) => {
+  getAllAvailable: async (category?: string) => {
+    // Use mock data in maintenance mode
+    if (config.MAINTENANCE_MODE) {
+      const data = category ? getProductsByCategory(category) : mockProducts;
+      return createMockApiResponse(data);
+    }
     const categoryParam = category ? `category=${encodeURIComponent(category)}&` : '';
     return apiService.get(`/products?${categoryParam}available=true`, false);
   },
   
-  getFeatured: () => 
-    apiService.get('/products/featured', false),
+  getFeatured: async () => {
+    // Use mock data in maintenance mode
+    if (config.MAINTENANCE_MODE) {
+      return createMockApiResponse(mockFeaturedProducts);
+    }
+    return apiService.get('/products/featured', false);
+  },
   
-  getById: (id: string) => 
-    apiService.get(`/products/${id}`, false),
+  getById: async (id: string) => {
+    // Use mock data in maintenance mode
+    if (config.MAINTENANCE_MODE) {
+      const product = mockProducts.find(p => p.id === id);
+      return createMockApiResponse(product || mockProducts[0]);
+    }
+    return apiService.get(`/products/${id}`, false);
+  },
   
   create: (formData: FormData) => 
     apiService.postFormData('/products', formData),
@@ -284,6 +313,12 @@ export const ordersAPI = {
   
   assignDriver: (id: string, driverId: string) =>
     apiService.put(`/orders/${id}/assign_driver`, { driver_id: driverId }),
+  
+  unassignDriver: (id: string) =>
+    apiService.put(`/orders/${id}/unassign_driver`),
+  
+  reassignDriver: (id: string, driverId: string) =>
+    apiService.put(`/orders/${id}/reassign_driver`, { driver_id: driverId }),
   
   batchAssign: (orderIds: string[], driverId: string) =>
     apiService.post('/orders/batch_assign', { order_ids: orderIds, driver_id: driverId }),
@@ -338,8 +373,13 @@ export const driverStatsAPI = {
 // Removed duplicate adminAPI - merged below
 
 export const categoriesAPI = {
-  getAll: () => 
-    apiService.get('/categories'),
+  getAll: async () => {
+    // Use mock data in maintenance mode
+    if (config.MAINTENANCE_MODE) {
+      return createMockApiResponse(mockCategories);
+    }
+    return apiService.get('/categories');
+  },
   
   getById: (id: string) => 
     apiService.get(`/categories/${id}`),
